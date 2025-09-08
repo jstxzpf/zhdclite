@@ -1,0 +1,10 @@
+{
+    "driver": "ODBC Driver 18 for SQL Server",
+    "server": "your_external_server",
+    "database": "hhgzhdc",
+    "uid": "sa",
+    "pwd": "your_password_here",
+    "encrypt": "yes",
+    "trustServerCertificate": "yes"
+}
+
