@@ -1,0 +1,17 @@
+Flask==3.0.3
+numpy==1.24.3
+pandas==2.0.3
+openpyxl==3.1.2
+pyodbc==5.0.1
+werkzeug==3.0.3
+requests==2.31.0
+xlrd==2.0.1
+aiohttp==3.9.5
+asyncio
+# Excel格式设置相关依赖
+et-xmlfile==1.1.0
+# 字体支持
+fonttools==4.53.1
+# Word文档生成
+python-docx==1.1.0
+pytest==8.2.2

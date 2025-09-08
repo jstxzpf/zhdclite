@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>深度分析调试</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .analysis-results { margin-top: 20px; padding: 15px; border: 2px solid #007bff; }
+        .result-section { margin: 15px 0; padding: 10px; background: #f8f9fa; }
+        .analysis-result-table { width: 100%; border-collapse: collapse; }
+        .analysis-result-table td { padding: 8px; border: 1px solid #ddd; }
+        .label-cell { font-weight: bold; background: #e9ecef; }
+        .quality-badge { padding: 2px 8px; border-radius: 4px; color: white; }
+        .quality-excellent { background: #28a745; }
+        .quality-good { background: #17a2b8; }
+        .quality-average { background: #ffc107; color: #212529; }
+        .quality-poor { background: #fd7e14; }
+        .quality-very-poor { background: #dc3545; }
+        .tag-badge { display: inline-block; padding: 2px 6px; margin: 2px; background: #007bff; color: white; border-radius: 3px; font-size: 0.8em; }
+        .no-data { text-align: center; color: #6c757d; padding: 20px; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>深度分析功能调试</h1>
+    
+    <div class="debug-section">
+        <h2>1. 测试API调用</h2>
+        <button onclick="testAPI()">测试单户分析API</button>
+        <div id="apiResult"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>2. 测试结果显示</h2>
+        <button onclick="testDisplay()">测试结果显示函数</button>
+        <div class="analysis-results" id="analysisResults" style="display: none;">
+            <!-- 结果内容将通过JavaScript动态生成 -->
+        </div>
+    </div>
+
+    <script>
+        // 格式化货币
+        function formatCurrency(amount) {
+            if (amount === null || amount === undefined) return '¥0.00';
+            return '¥' + parseFloat(amount).toLocaleString('zh-CN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+
+        // 获取质量等级对应的CSS类
+        function getQualityClass(level) {
+            const classMap = {
+                '优秀': 'excellent',
+                '良好': 'good',
+                '一般': 'average',
+                '较差': 'poor',
+                '很差': 'very-poor'
+            };
+            return classMap[level] || 'unknown';
+        }
+
+        // 生成消费画像标签表格
+        function generateConsumptionProfileTable(profile) {
+            if (!profile) {
+                return '<p class="no-data">暂无消费画像数据</p>';
+            }
+
+            let html = '<table class="analysis-result-table"><tbody>';
+
+            // 遍历所有标签类型
+            for (const [tagType, tags] of Object.entries(profile)) {
+                if (Array.isArray(tags) && tagType.endsWith('标签')) {
+                    html += `
+                        <tr>
+                            <td class="label-cell">${tagType}</td>
+                            <td>
+                                <div class="tags-inline">
+                                    ${tags.map(tag => `<span class="tag-badge">${tag}</span>`).join('')}
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+
+            html += '</tbody></table>';
+            return html;
+        }
+
+        // 生成记账质量评估表格
+        function generateQualityAssessmentTable(qualityData) {
+            if (!qualityData) {
+                return '<p class="no-data">暂无质量评估数据</p>';
+            }
+
+            const scores = qualityData.各项评分 || {};
+
+            let html = `
+                <table class="analysis-result-table">
+                    <tbody>
+                        <tr>
+                            <td class="label-cell">质量等级</td>
+                            <td><span class="quality-badge quality-${getQualityClass(qualityData.质量评估)}">${qualityData.质量评估 || 'N/A'}</span></td>
+                            <td class="label-cell">总评分</td>
+                            <td><strong>${qualityData.总评分 || 0}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+
+            return html;
+        }
+
+        // 生成异常检测结果表格
+        function generateAnomalyDetectionTable(anomalyData) {
+            if (!anomalyData) {
+                return '<p class="no-data">暂无异常检测数据</p>';
+            }
+
+            const stats = anomalyData.异常统计 || {};
+
+            let html = `
+                <table class="analysis-result-table">
+                    <tbody>
+                        <tr>
+                            <td class="label-cell">异常记录数</td>
+                            <td><span class="anomaly-count">${stats.异常记录数 || 0}</span></td>
+                            <td class="label-cell">异常评分</td>
+                            <td><span class="anomaly-score">${stats.异常评分 || 0}</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+
+            return html;
+        }
+
+        // 显示单户分析结果
+        function displaySingleAnalysisResult(data) {
+            console.log('displaySingleAnalysisResult called with data:', data);
+            
+            const resultsContainer = document.getElementById('analysisResults');
+            console.log('resultsContainer:', resultsContainer);
+
+            const html = `
+                <div class="analysis-result-header">
+                    <h4><i class="fas fa-user-check"></i> 单户深度分析结果</h4>
+                    <div class="result-meta">
+                        <span class="meta-item">户代码: ${data.household_basic_info?.户代码 || 'N/A'}</span>
+                        <span class="meta-item">户主: ${data.household_basic_info?.户主姓名 || 'N/A'}</span>
+                        <span class="meta-item">村居: ${data.household_basic_info?.村居名称 || 'N/A'}</span>
+                        <span class="meta-item">生成时间: ${data.report_metadata?.报告生成时间 || 'N/A'}</span>
+                    </div>
+                </div>
+
+                <div class="analysis-result-sections">
+                    <!-- 基本信息 -->
+                    <div class="result-section">
+                        <h5><i class="fas fa-info-circle"></i> 基本信息</h5>
+                        <table class="analysis-result-table">
+                            <tbody>
+                                <tr>
+                                    <td class="label-cell">户代码</td>
+                                    <td>${data.household_basic_info?.户代码 || 'N/A'}</td>
+                                    <td class="label-cell">户主姓名</td>
+                                    <td>${data.household_basic_info?.户主姓名 || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <td class="label-cell">村居名称</td>
+                                    <td>${data.household_basic_info?.村居名称 || 'N/A'}</td>
+                                    <td class="label-cell">家庭人口</td>
+                                    <td>${data.household_basic_info?.家庭人口 || 'N/A'}</td>
+                                </tr>
+                                <tr>
+                                    <td class="label-cell">总收入</td>
+                                    <td>${formatCurrency(data.household_basic_info?.总收入 || 0)}</td>
+                                    <td class="label-cell">总支出</td>
+                                    <td>${formatCurrency(data.household_basic_info?.总支出 || 0)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 消费画像标签 -->
+                    <div class="result-section">
+                        <h5><i class="fas fa-tags"></i> 消费画像标签</h5>
+                        ${generateConsumptionProfileTable(data.consumption_profile)}
+                    </div>
+
+                    <!-- 记账质量评估 -->
+                    <div class="result-section">
+                        <h5><i class="fas fa-star"></i> 记账质量评估</h5>
+                        ${generateQualityAssessmentTable(data.quality_assessment)}
+                    </div>
+
+                    <!-- 综合评估 -->
+                    <div class="result-section">
+                        <h5><i class="fas fa-chart-pie"></i> 综合评估</h5>
+                        <table class="analysis-result-table">
+                            <tbody>
+                                <tr>
+                                    <td class="label-cell">综合等级</td>
+                                    <td><span class="quality-badge quality-${getQualityClass(data.comprehensive_assessment?.综合等级)}">${data.comprehensive_assessment?.综合等级 || 'N/A'}</span></td>
+                                    <td class="label-cell">综合评分</td>
+                                    <td><strong>${data.comprehensive_assessment?.综合评分 || 0}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td class="label-cell">评估描述</td>
+                                    <td colspan="3">${data.comprehensive_assessment?.评估描述 || '暂无描述'}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 异常检测结果 -->
+                    <div class="result-section">
+                        <h5><i class="fas fa-exclamation-triangle"></i> 异常检测结果</h5>
+                        ${generateAnomalyDetectionTable(data.anomaly_detection)}
+                    </div>
+                </div>
+            `;
+
+            console.log('Setting innerHTML...');
+            resultsContainer.innerHTML = html;
+            console.log('Setting display to block...');
+            resultsContainer.style.display = 'block';
+            console.log('Display completed');
+        }
+
+        // 测试API调用
+        async function testAPI() {
+            const resultDiv = document.getElementById('apiResult');
+            resultDiv.innerHTML = '正在调用API...';
+            
+            try {
+                const response = await fetch('/api/household-analysis/single', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        household_code: '321283001002012'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    resultDiv.innerHTML = `
+                        <div style="color: green;">✅ API调用成功</div>
+                        <div>户代码: ${result.data.household_basic_info?.户代码}</div>
+                        <div>户主姓名: ${result.data.household_basic_info?.户主姓名}</div>
+                        <div>综合评分: ${result.data.comprehensive_assessment?.综合评分}</div>
+                        <button onclick="testDisplayWithData(${JSON.stringify(result.data).replace(/"/g, '&quot;')})">用此数据测试显示</button>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div style="color: red;">❌ API调用失败: ${result.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div style="color: red;">❌ 请求失败: ${error.message}</div>`;
+            }
+        }
+
+        // 测试结果显示
+        function testDisplay() {
+            const mockData = {
+                household_basic_info: {
+                    户代码: '321283001002012',
+                    户主姓名: '测试户主',
+                    村居名称: '测试村',
+                    家庭人口: 3,
+                    总收入: 50000,
+                    总支出: 30000
+                },
+                consumption_profile: {
+                    消费水平型标签: ['高消费户'],
+                    消费偏好型标签: ['爱宠家庭']
+                },
+                quality_assessment: {
+                    质量评估: '优秀',
+                    总评分: 95,
+                    各项评分: {
+                        数据完整性: 100,
+                        记账频率: 95
+                    }
+                },
+                comprehensive_assessment: {
+                    综合等级: '优秀',
+                    综合评分: 95,
+                    评估描述: '记账质量优秀，数据可靠性高'
+                },
+                anomaly_detection: {
+                    异常统计: {
+                        异常记录数: 5,
+                        异常评分: 2.5
+                    }
+                },
+                report_metadata: {
+                    报告生成时间: '2025-08-22 14:30:00'
+                }
+            };
+            
+            displaySingleAnalysisResult(mockData);
+        }
+
+        // 用真实数据测试显示
+        function testDisplayWithData(data) {
+            displaySingleAnalysisResult(data);
+        }
+    </script>
+</body>
+</html>

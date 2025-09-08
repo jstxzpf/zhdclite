@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>住户数据整理系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- 添加Font Awesome图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- 加载遮罩 -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p id="loadingText">正在处理中...</p>
+        </div>
+    </div>
+
+    <!-- 消息提示 -->
+    <div id="messageContainer" class="message-container"></div>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-home"></i> 住户数据整理系统</h1>
+                <p class="subtitle">高效、安全的住户调查数据管理平台</p>
+            </div>
+            <!-- 系统状态指示器 -->
+            <div class="system-status">
+                <div class="status-item">
+                    <i class="fas fa-database"></i>
+                    <span>数据库连接</span>
+                    <div class="status-indicator" id="dbStatus"></div>
+                </div>
+                <div class="status-item">
+                    <i class="fas fa-clock"></i>
+                    <span>系统时间</span>
+                    <div class="status-time" id="systemTime"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 导航菜单 -->
+        <nav class="main-nav">
+            <div class="nav-item active" data-section="data-generation">
+                <i class="fas fa-chart-line"></i>
+                <span>数据生成</span>
+            </div>
+            <div class="nav-item" data-section="data-import">
+                <i class="fas fa-upload"></i>
+                <span>数据导入</span>
+            </div>
+            <div class="nav-item" data-section="data-sync">
+                <i class="fas fa-sync-alt"></i>
+                <span>数据同步</span>
+            </div>
+            <div class="nav-item" data-section="direct-coding">
+                <i class="fas fa-code"></i>
+                <span>直接编码</span>
+            </div>
+            <div class="nav-item" data-section="statistics">
+                <i class="fas fa-chart-bar"></i>
+                <span>数据统计</span>
+            </div>
+
+        </nav>
+
+        <!-- 数据生成模块 -->
+        <section class="module-section active" id="data-generation">
+            <div class="section-header">
+                <h2><i class="fas fa-chart-line"></i> 数据生成</h2>
+                <p class="section-description">生成各类数据报表和台账文件</p>
+            </div>
+
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-file-excel"></i> 生成未编码表格</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <form id="uncodedForm" action="/generate_uncoded_data" method="post" target="_blank">
+                    <div class="form-row">
+                        <p class="form-description">
+                            <i class="fas fa-info-circle"></i>
+                            将导出所有年份和月份的未编码记录
+                        </p>
+                    </div>
+                    <div class="form-row">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-download"></i> 生成并下载全部未编码数据
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-table"></i> 生成电子台账</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <form id="ledgerForm" action="/generate_electronic_ledger" method="post" target="_blank">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="ledger_year">年度：</label>
+                            <select name="year" id="ledger_year" required>
+                                <option value="2023">2023</option>
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026">2026</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ledger_month">月份：</label>
+                            <select name="month" id="ledger_month" required>
+                                <option value="01">01月</option>
+                                <option value="02">02月</option>
+                                <option value="03">03月</option>
+                                <option value="04">04月</option>
+                                <option value="05">05月</option>
+                                <option value="06">06月</option>
+                                <option value="07">07月</option>
+                                <option value="08">08月</option>
+                                <option value="09">09月</option>
+                                <option value="10">10月</option>
+                                <option value="11">11月</option>
+                                <option value="12">12月</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="town">乡镇：</label>
+                            <select name="town" id="town" required>
+                                <option value="全部乡镇">全部乡镇</option>
+                                <option value="分界镇">分界镇</option>
+                                <option value="滨江镇">滨江镇</option>
+                                <option value="黄桥镇">黄桥镇</option>
+                                <option value="延令济川街道">延令济川街道</option>
+                                <option value="古溪镇">古溪镇</option>
+                                <option value="元竹镇">元竹镇</option>
+                                <option value="珊瑚镇">珊瑚镇</option>
+                                <option value="曲霞镇">曲霞镇</option>
+                                <option value="广陵镇">广陵镇</option>
+                                <option value="张桥镇">张桥镇</option>
+                                <option value="河失镇">河失镇</option>
+                                <option value="新街镇">新街镇</option>
+                                <option value="姚王街道">姚王街道</option>
+                                <option value="宣堡镇">宣堡镇</option>
+                                <option value="虹桥镇">虹桥镇</option>
+                                <option value="根思乡">根思乡</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-download"></i> 生成电子台账
+                    </button>
+                </form>
+            </div>
+
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-table"></i> 生成汇总表</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <form id="summaryForm" action="{{ url_for('data_generation.generate_summary_table') }}" method="post" target="_blank">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="summary_year">年份：</label>
+                            <select name="year" id="summary_year" required>
+                                <option value="2023">2023</option>
+                                <option value="2024" selected>2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026">2026</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="summary_period">期别：</label>
+                            <select name="period" id="summary_period" required>
+                                <option value="一季度">一季度</option>
+                                <option value="上半年">上半年</option>
+                                <option value="三季度">三季度</option>
+                                <option value="全年度">全年度</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="summary_category">类别：</label>
+                            <select name="category" id="summary_category" required>
+                                <option value="全部">全部</option>
+                                <option value="城镇点">城镇点</option>
+                                <option value="农村点">农村点</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="summary_sample_point_type">样本点类型：</label>
+                            <select name="sample_point_type" id="summary_sample_point_type" required>
+                                <option value="全部类型" selected>全部类型</option>
+                                <option value="国家点">国家点</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-download"></i> 生成汇总表
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- 数据导入模块 -->
+        <section class="module-section" id="data-import">
+            <div class="section-header">
+                <h2><i class="fas fa-upload"></i> 数据导入</h2>
+                <p class="section-description">导入各类Excel数据文件到系统数据库</p>
+            </div>
+
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-file-import"></i> 导入已编码表格</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <form id="codedForm" action="/import_coded_data" method="post" enctype="multipart/form-data">
+                    <div class="file-upload-area">
+                        <input type="file" name="file" id="import_coded_file" accept=".xlsx,.xls" required>
+                        <label for="import_coded_file" class="file-upload-label">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <span>选择Excel文件或拖拽到此处</span>
+                            <small>支持 .xlsx 和 .xls 格式，最大50MB</small>
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-upload"></i> 导入已编码表格
+                    </button>
+                </form>
+            </div>
+
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-map-marker-alt"></i> 导入地方点数据</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <form id="localForm" action="/import_local_data" method="post" enctype="multipart/form-data">
+                    <div class="file-upload-area">
+                        <input type="file" name="file" id="import_local_file" accept=".xlsx,.xls" required>
+                        <label for="import_local_file" class="file-upload-label">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <span>选择Excel文件或拖拽到此处</span>
+                            <small>支持 .xlsx 和 .xls 格式，最大50MB</small>
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-upload"></i> 导入地方点数据
+                    </button>
+                </form>
+            </div>
+
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-flag"></i> 导入国家点数据</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <form id="nationalForm" action="/import_national_data" method="post" enctype="multipart/form-data">
+                    <div class="file-upload-area">
+                        <input type="file" name="file" id="import_national_file" accept=".csv" required>
+                        <label for="import_national_file" class="file-upload-label">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <span>选择CSV文件或拖拽到此处</span>
+                            <small>支持 .csv 格式，最大50MB</small>
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-upload"></i> 导入国家点数据
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- 数据库同步模块 -->
+        <section class="module-section" id="data-sync">
+            <div class="section-header">
+                <h2><i class="fas fa-sync-alt"></i> 数据库同步</h2>
+                <p class="section-description">与外部数据库进行数据同步操作</p>
+            </div>
+
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-database"></i> 同步外部数据库</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <p class="description">从外部数据库同步最新的调查数据到本地系统</p>
+                <form id="syncForm" action="/sync_external_db" method="post">
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-sync-alt"></i> 同步外部数据库
+                    </button>
+                </form>
+            </div>
+
+
+        </section>
+
+        <!-- 直接匹配编码模块 -->
+        <section class="module-section" id="direct-coding">
+            <div class="section-header">
+                <h2><i class="fas fa-code"></i> 直接匹配编码</h2>
+                <p class="section-description">基于type_name进行直接匹配编码，无需AI服务</p>
+            </div>
+
+            <!-- 统计信息卡片 -->
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-chart-bar"></i> 映射统计</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <div class="stats-display" id="mappingStats">
+                    <div class="stat-item">
+                        <span class="stat-label">总映射数：</span>
+                        <span class="stat-value" id="totalMappings">加载中...</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">总频次：</span>
+                        <span class="stat-value" id="totalFrequency">加载中...</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">平均频次：</span>
+                        <span class="stat-value" id="avgFrequency">加载中...</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">唯一编码数：</span>
+                        <span class="stat-value" id="uniqueCodes">加载中...</span>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button type="button" class="btn btn-secondary" onclick="loadMappingStats()">
+                        <i class="fas fa-refresh"></i> 刷新统计
+                    </button>
+                    <button type="button" class="btn btn-info" onclick="showMappingPreview()">
+                        <i class="fas fa-eye"></i> 查看映射
+                    </button>
+                    <button type="button" class="btn btn-warning" onclick="refreshMappingCache()">
+                        <i class="fas fa-sync-alt"></i> 刷新缓存
+                    </button>
+                </div>
+            </div>
+
+            <!-- 编码处理卡片 -->
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-cogs"></i> 编码处理</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <form id="directCodingForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="uncoded_count_display">待处理记录数：</label>
+                            <div class="count-display">
+                                <span id="uncoded_count_display">点击查询获取数量</span>
+                                <button type="button" class="btn btn-secondary btn-small" onclick="getUncodedCount()">
+                                    <i class="fas fa-search"></i> 查询数量
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="process_limit">处理数量限制：</label>
+                            <select name="process_limit" id="process_limit">
+                                <option value="100">100条</option>
+                                <option value="500" selected>500条</option>
+                                <option value="1000">1000条</option>
+                                <option value="2000">2000条</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="batch_size">批处理大小：</label>
+                            <select name="batch_size" id="batch_size">
+                                <option value="100">100条/批</option>
+                                <option value="500" selected>500条/批</option>
+                                <option value="1000">1000条/批</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-primary" onclick="processSingleBatch()">
+                            <i class="fas fa-play"></i> 处理单批
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="processBatchMode()">
+                            <i class="fas fa-forward"></i> 批量处理
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 测试匹配卡片 -->
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-search"></i> 测试匹配</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <form id="testMatchForm">
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label for="test_type_name">Type Name：</label>
+                            <input type="text" name="test_type_name" id="test_type_name"
+                                   placeholder="输入要测试的type_name" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <button type="submit" class="btn btn-info">
+                            <i class="fas fa-search"></i> 测试匹配
+                        </button>
+                    </div>
+                    <div id="matchResult" class="match-result" style="display: none;">
+                        <div class="result-item">
+                            <span class="result-label">输入：</span>
+                            <span class="result-value" id="resultTypeName">-</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">匹配编码：</span>
+                            <span class="result-value" id="resultCode">-</span>
+                        </div>
+                        <div class="result-item">
+                            <span class="result-label">匹配状态：</span>
+                            <span class="result-value" id="resultStatus">-</span>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+
+    </div>
+
+    <!-- 确认对话框 -->
+    <div id="confirmModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3><i class="fas fa-exclamation-triangle"></i> 确认操作</h3>
+            <p id="confirmMessage">您确定要执行此操作吗？</p>
+            <div class="modal-buttons">
+                <button id="confirmYes" class="btn btn-primary">确认</button>
+                <button id="confirmNo" class="btn btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 添加全局错误处理
+        window.addEventListener('error', function(e) {
+            console.error('全局JavaScript错误:', e.error);
+            console.error('错误位置:', e.filename, '行:', e.lineno, '列:', e.colno);
+        });
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM内容加载完成，开始初始化...');
+
+            // 添加一个简单的测试来验证JavaScript是否工作
+            try {
+                document.getElementById('totalMappings').textContent = '测试中...';
+                console.log('✅ 基础DOM操作正常');
+            } catch (error) {
+                console.error('❌ 基础DOM操作失败:', error);
+            }
+
+            try {
+                console.log('1. 初始化页面...');
+                initializePage();
+
+                console.log('2. 设置表单处理器...');
+                setupFormHandlers();
+
+                console.log('3. 设置文件上传...');
+                setupFileUpload();
+
+                console.log('4. 设置导航...');
+                setupNavigation();
+
+                console.log('5. 更新系统状态...');
+                updateSystemStatus();
+
+                console.log('6. 启动系统时间更新...');
+                startSystemTimeUpdate();
+
+                console.log('7. 初始化直接编码功能...');
+                initializeDirectCoding();
+
+                console.log('页面初始化完成！');
+            } catch (error) {
+                console.error('页面初始化失败:', error);
+                // 显示错误信息到页面上
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = 'position:fixed;top:10px;right:10px;background:red;color:white;padding:10px;z-index:9999;';
+                errorDiv.textContent = '页面初始化失败: ' + error.message;
+                document.body.appendChild(errorDiv);
+            }
+        });
+
+        // 初始化页面
+        function initializePage() {
+            const currentYear = new Date().getFullYear();
+            const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
+
+            // 设置默认年月
+            const yearSelects = document.querySelectorAll('select[name="year"]');
+            const monthSelects = document.querySelectorAll('select[name="month"]');
+
+            yearSelects.forEach(select => {
+                select.value = currentYear;
+            });
+
+            monthSelects.forEach(select => {
+                select.value = currentMonth;
+            });
+        }
+
+        // 设置导航功能
+        function setupNavigation() {
+            const navItems = document.querySelectorAll('.nav-item');
+            const sections = document.querySelectorAll('.module-section');
+
+            navItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const targetSection = this.getAttribute('data-section');
+
+                    // 特殊处理统计页面 - 跳转到新页面
+                    if (targetSection === 'statistics') {
+                        window.open('/statistics', '_blank');
+                        return;
+                    }
+
+
+
+                    // 更新导航状态
+                    navItems.forEach(nav => nav.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // 显示对应的模块
+                    sections.forEach(section => {
+                        section.classList.remove('active');
+                        if (section.id === targetSection) {
+                            section.classList.add('active');
+                        }
+                    });
+                });
+            });
+        }
+
+        // 更新系统状态
+        function updateSystemStatus() {
+            const dbStatus = document.getElementById('dbStatus');
+
+            // 检查数据库连接状态
+            fetch('/api/system/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.database_connected) {
+                        dbStatus.className = 'status-indicator online';
+                        dbStatus.title = '数据库连接正常';
+                    } else {
+                        dbStatus.className = 'status-indicator offline';
+                        dbStatus.title = '数据库连接异常';
+                    }
+                })
+                .catch(() => {
+                    dbStatus.className = 'status-indicator offline';
+                    dbStatus.title = '无法获取状态';
+                });
+        }
+
+        // 开始系统时间更新
+        function startSystemTimeUpdate() {
+            function updateTime() {
+                const now = new Date();
+                const timeString = now.getFullYear() + '年' +
+                                 String(now.getMonth() + 1).padStart(2, '0') + '月' +
+                                 String(now.getDate()).padStart(2, '0') + '日 ' +
+                                 String(now.getHours()).padStart(2, '0') + ':' +
+                                 String(now.getMinutes()).padStart(2, '0') + ':' +
+                                 String(now.getSeconds()).padStart(2, '0');
+                document.getElementById('systemTime').textContent = timeString;
+            }
+
+            updateTime();
+            setInterval(updateTime, 1000);
+        }
+
+        // 设置表单处理器
+        function setupFormHandlers() {
+            // 数据生成表单
+            setupFormSubmit('uncodedForm', '正在生成未编码表格...');
+            setupLedgerFormSubmit(); // 电子台账使用特殊处理
+            setupFormSubmit('summaryForm', '正在生成汇总表...');
+
+            // 数据导入表单
+            setupFormSubmit('codedForm', '正在导入已编码数据...', true);
+            setupFormSubmit('localForm', '正在导入地方点数据...', true);
+            setupFormSubmit('nationalForm', '正在导入国家点数据...', true);
+
+            // 数据库同步表单
+            setupFormSubmit('syncForm', '正在同步外部数据库...', true);
+        }
+
+        // 设置表单提交处理
+        function setupFormSubmit(formId, loadingText, needConfirm = false) {
+            const form = document.getElementById(formId);
+            if (!form) return;
+
+            form.addEventListener('submit', function(e) {
+                if (needConfirm) {
+                    e.preventDefault();
+                    showConfirmDialog(getConfirmMessage(formId), () => {
+                        submitForm(form, loadingText);
+                    });
+                } else {
+                    e.preventDefault();
+                    submitForm(form, loadingText);
+                }
+            });
+        }
+
+        // 获取确认消息
+        function getConfirmMessage(formId) {
+            const form = document.getElementById(formId);
+            let baseMessage = '';
+
+            const messages = {
+                'codedForm': '确定要导入已编码数据吗？此操作将更新数据库中的相关记录。',
+                'localForm': '确定要导入地方点数据吗？此操作将向数据库添加新记录。',
+                'nationalForm': '确定要导入国家点数据吗？此操作将向数据库添加新记录。',
+                'syncForm': '确定要同步外部数据库吗？此操作可能需要较长时间。'
+            };
+            baseMessage = messages[formId] || '确定要执行此操作吗？';
+
+            // 检查文件大小并添加警告
+            if (form) {
+                const fileInput = form.querySelector('input[type="file"]');
+                if (fileInput && fileInput.files.length > 0) {
+                    const file = fileInput.files[0];
+                    const fileSizeMB = file.size / (1024 * 1024);
+                    if (fileSizeMB > 10) {
+                        baseMessage += `\n\n注意：您选择的文件较大（${fileSizeMB.toFixed(1)}MB），处理时间可能较长，请耐心等待。`;
+                    }
+                }
+            }
+
+            return baseMessage;
+        }
+
+        // 提交表单 - 优化版支持异步处理和进度反馈
+        function submitForm(form, loadingText) {
+            const formId = form.getAttribute('id');
+            
+            // 检查是否为大文件上传，启用特殊处理
+            const fileInput = form.querySelector('input[type="file"]');
+            const isLargeFileUpload = fileInput && fileInput.files[0] && fileInput.files[0].size > 10 * 1024 * 1024; // 10MB
+
+            if (formId === 'nationalForm' || isLargeFileUpload) {
+                submitFormWithProgress(form, loadingText);
+            } else {
+                submitFormNormal(form, loadingText);
+            }
+        }
+
+        // 普通表单提交（保持原有逻辑）
+        function submitFormNormal(form, loadingText) {
+            showLoading(loadingText);
+
+            const formData = new FormData(form);
+            const action = form.getAttribute('action');
+            const method = form.getAttribute('method') || 'POST';
+
+            // 创建AbortController用于超时控制
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                controller.abort();
+            }, 300000); // 5分钟超时
+
+            fetch(action, {
+                method: method,
+                body: formData,
+                signal: controller.signal
+            })
+            .then(response => {
+                // 检查内容类型
+                const contentType = response.headers.get('content-type');
+
+                if (contentType && contentType.includes('application/json')) {
+                    // 处理JSON响应
+                    return response.json().then(data => {
+                        if (form.id === 'syncInternalToExternalFullForm') {
+                            showSyncResult(data);
+                        } else {
+                            showMessage(data.message || '操作完成', data.success ? 'success' : 'error');
+                        }
+                    });
+                } else if (contentType && contentType.includes('application/')) {
+                    // 处理文件下载
+                    if (response.ok) {
+                        return response.blob().then(blob => {
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+
+                            // 尝试从响应头获取文件名
+                            let filename = getFileNameFromResponse(response, action);
+                            a.download = filename;
+
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
+                            showMessage('文件生成成功！', 'success');
+                        });
+                    } else {
+                        return response.text().then(text => {
+                            showMessage(text || '文件生成失败', 'error');
+                        });
+                    }
+                } else {
+                    // 处理文本响应
+                    return response.text().then(text => {
+                        showMessage(text || (response.ok ? '操作成功' : '操作失败'), response.ok ? 'success' : 'error');
+                    });
+                }
+            })
+            .catch(error => {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    showMessage('操作超时，请检查文件大小或网络连接', 'error');
+                } else {
+                    showMessage('网络错误：' + error.message, 'error');
+                }
+            })
+            .finally(() => {
+                clearTimeout(timeoutId);
+                hideLoading();
+            });
+        }
+
+        // 带进度的异步表单提交（用于大文件处理）
+        function submitFormWithProgress(form, loadingText) {
+            const formId = form.getAttribute('id');
+            const action = form.getAttribute('action');
+            const formData = new FormData(form);
+
+            // 显示带进度的加载状态
+            showLoadingWithProgress(loadingText);
+
+            // 启动进度监控
+            let progressMonitor = null;
+            let completedSuccessfully = false;
+
+            // 提交表单
+            fetch(action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(async response => {
+                const contentType = response.headers.get('content-type');
+                
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await response.json();
+                    completedSuccessfully = data.success || response.ok;
+                    showMessage(data.message || '操作完成', completedSuccessfully ? 'success' : 'error');
+                } else {
+                    const text = await response.text();
+                    completedSuccessfully = response.ok;
+                    showMessage(text || (response.ok ? '操作成功' : '操作失败'), response.ok ? 'success' : 'error');
+                }
+            })
+            .catch(error => {
+                completedSuccessfully = false;
+                if (error.name === 'AbortError') {
+                    showMessage('操作可能因文件过大而超时，但后台仍在处理中', 'warning');
+                } else {
+                    showMessage('网络错误：' + error.message, 'error');
+                }
+            })
+            .finally(() => {
+                if (progressMonitor) {
+                    clearInterval(progressMonitor);
+                }
+                hideLoading();
+            });
+
+            // 如果是国家点导入，启动进度监控
+            if (formId === 'nationalForm') {
+                let progressStep = 0;
+                const progressSteps = [
+                    '正在读取CSV文件...',
+                    '正在验证数据格式...',
+                    '正在导入到临时表...',
+                    '正在验证数据完整性...',
+                    '正在合并到主表...',
+                    '正在更新编码信息...',
+                    '正在完成最后处理...'
+                ];
+
+                progressMonitor = setInterval(() => {
+                    if (!completedSuccessfully && progressStep < progressSteps.length - 1) {
+                        progressStep++;
+                        updateLoadingText(progressSteps[progressStep]);
+                    }
+                }, 15000); // 每15秒更新一次进度提示
+            }
+        }
+
+        // 电子台账表单特殊处理（支持进度反馈）
+        function setupLedgerFormSubmit() {
+            const form = document.getElementById('ledgerForm');
+            if (!form) return;
+
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                const formData = new FormData(form);
+                const town = formData.get('town');
+
+                // 生成任务ID
+                const taskId = 'ledger_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                formData.append('task_id', taskId);
+
+                // 确定加载文本
+                let loadingText;
+                if (town === '全部乡镇') {
+                    loadingText = '正在准备批量生成电子台账...';
+                } else {
+                    loadingText = `正在生成 ${town} 电子台账...`;
+                }
+
+                // 显示加载状态
+                showLoadingWithProgress(loadingText);
+
+                // 启动进度监控
+                const progressMonitor = startLedgerProgressMonitor(taskId, town);
+
+                // 提交表单
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (response.ok) {
+                        return response.blob().then(blob => {
+                            const fileName = getFileNameFromResponse(response, form.action);
+                            downloadBlob(blob, fileName);
+                            showMessage('电子台账生成成功！', 'success');
+                        });
+                    } else {
+                        return response.text().then(text => {
+                            throw new Error(text || '生成失败');
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('电子台账生成失败:', error);
+                    showMessage('生成失败：' + error.message, 'error');
+                })
+                .finally(() => {
+                    clearInterval(progressMonitor);
+                    hideLoading();
+                });
+            });
+        }
+
+        // 启动电子台账进度监控
+        function startLedgerProgressMonitor(taskId, town) {
+            return setInterval(() => {
+                fetch(`/ledger_progress/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.progress) {
+                        const progress = data.progress;
+                        let progressText;
+
+                        if (progress.status === 'processing') {
+                            if (town === '全部乡镇') {
+                                progressText = `正在生成 ${progress.current_town} 电子台账... (${progress.current_index}/${progress.total_towns})`;
+                            } else {
+                                progressText = `正在生成 ${progress.current_town} 电子台账...`;
+                            }
+                        } else if (progress.status === 'completed') {
+                            if (town === '全部乡镇') {
+                                progressText = `全部乡镇电子台账生成完成！正在打包下载...`;
+                            } else {
+                                progressText = `${progress.current_town} 电子台账生成完成！正在准备下载...`;
+                            }
+                        }
+
+                        updateLoadingText(progressText);
+                    }
+                })
+                .catch(error => {
+                    console.warn('获取进度失败:', error);
+                });
+            }, 2000); // 每2秒检查一次进度
+        }
+
+        // 从响应头获取文件名
+        function getFileNameFromResponse(response, action) {
+            // 尝试从Content-Disposition头获取文件名
+            const contentDisposition = response.headers.get('Content-Disposition');
+            if (contentDisposition) {
+                // 优先匹配 filename*=UTF-8''filename (RFC 5987标准，支持中文)
+                const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/);
+                if (utf8Match) {
+                    try {
+                        return decodeURIComponent(utf8Match[1]);
+                    } catch (e) {
+                        console.warn('UTF-8文件名解码失败:', e);
+                    }
+                }
+
+                // 回退到 filename="filename" (ASCII安全)
+                const asciiMatch = contentDisposition.match(/filename="([^"]+)"/);
+                if (asciiMatch) {
+                    return asciiMatch[1];
+                }
+            }
+
+            // 回退到默认文件名
+            return getDefaultFileName(action);
+        }
+
+        // 获取默认文件名
+        function getDefaultFileName(action) {
+            if (action.includes('uncoded')) return '未编码数据.xlsx';
+            if (action.includes('ledger')) return '电子台账.xlsx';
+            return 'download.xlsx';
+        }
+
+        // 设置文件上传
+        function setupFileUpload() {
+            const fileInputs = document.querySelectorAll('input[type="file"]');
+
+            fileInputs.forEach(input => {
+                const label = input.nextElementSibling;
+
+                // 文件选择事件
+                input.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        updateFileLabel(label, file);
+                        validateFile(file, input);
+                    }
+                });
+
+                // 拖拽事件
+                label.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    label.classList.add('dragover');
+                });
+
+                label.addEventListener('dragleave', function(e) {
+                    e.preventDefault();
+                    label.classList.remove('dragover');
+                });
+
+                label.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    label.classList.remove('dragover');
+
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        input.files = files;
+                        updateFileLabel(label, files[0]);
+                        validateFile(files[0], input);
+                    }
+                });
+            });
+        }
+
+        // 更新文件标签
+        function updateFileLabel(label, file) {
+            const span = label.querySelector('span');
+            const small = label.querySelector('small');
+
+            span.textContent = file.name;
+            small.textContent = `文件大小: ${formatFileSize(file.size)}`;
+            label.classList.add('file-selected');
+        }
+
+        // 验证文件
+        function validateFile(file, input) {
+            const maxSize = 50 * 1024 * 1024; // 50MB
+            const fileName = file.name.toLowerCase();
+            
+            // 根据不同的input确定允许的文件类型
+            let allowedTypes;
+            if (input.id === 'import_national_file') {
+                allowedTypes = ['.csv'];
+            } else {
+                allowedTypes = ['.xlsx', '.xls'];
+            }
+
+            // 检查文件类型
+            const isValidType = allowedTypes.some(type => fileName.endsWith(type));
+
+            if (!isValidType) {
+                const typeStr = allowedTypes.join(' 或 ');
+                showMessage(`文件类型不支持，请选择 ${typeStr} 格式的文件`, 'error');
+                input.value = '';
+                resetFileLabel(input.nextElementSibling);
+                return false;
+            }
+
+            // 检查文件大小
+            if (file.size > maxSize) {
+                showMessage('文件大小超过50MB限制', 'error');
+                input.value = '';
+                resetFileLabel(input.nextElementSibling);
+                return false;
+            }
+
+            return true;
+        }
+
+        // 重置文件标签
+        function resetFileLabel(label) {
+            const span = label.querySelector('span');
+            const small = label.querySelector('small');
+            const input = label.previousElementSibling;
+            
+            if (input.id === 'import_national_file') {
+                span.textContent = '选择CSV文件或拖拽到此处';
+                small.textContent = '支持 .csv 格式，最大50MB';
+            } else {
+                span.textContent = '选择Excel文件或拖拽到此处';
+                small.textContent = '支持 .xlsx 和 .xls 格式，最大50MB';
+            }
+            label.classList.remove('file-selected');
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 显示加载状态
+        function showLoading(text = '正在处理中...') {
+            const overlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            loadingText.textContent = text;
+            overlay.style.display = 'flex';
+
+            // 为导入操作添加超时保护
+            if (text.includes('导入')) {
+                setTimeout(() => {
+                    if (overlay.style.display === 'flex') {
+                        loadingText.textContent = text + ' (操作时间较长，请耐心等待...)';
+                    }
+                }, 10000); // 10秒后显示提示
+
+                setTimeout(() => {
+                    if (overlay.style.display === 'flex') {
+                        loadingText.textContent = text + ' (大文件处理中，请继续等待...)';
+                    }
+                }, 30000); // 30秒后显示提示
+            }
+        }
+
+        // 显示带进度反馈的加载状态（用于大文件处理）
+        function showLoadingWithProgress(text = '正在处理中...') {
+            const overlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            
+            // 修改加载文本显示，添加进度提示
+            loadingText.innerHTML = `
+                <div style="text-align: center;">
+                    <div style="margin-bottom: 10px;">${text}</div>
+                    <div id="progressInfo" style="font-size: 14px; color: #666; margin-top: 10px;">
+                        <div>⏱️ 处理大量数据需要时间，请耐心等待</div>
+                        <div style="margin-top: 5px;">🔄 系统正在后台处理，不会丢失您的操作</div>
+                    </div>
+                </div>
+            `;
+            
+            overlay.style.display = 'flex';
+        }
+
+        // 更新加载文本
+        function updateLoadingText(newText) {
+            const loadingText = document.getElementById('loadingText');
+            if (loadingText && loadingText.parentElement.style.display === 'flex') {
+                // 检查是否是HTML格式（含有div）
+                if (loadingText.innerHTML.includes('<div')) {
+                    // 更新主要文本，保持进度信息
+                    const progressInfo = document.getElementById('progressInfo');
+                    if (progressInfo) {
+                        loadingText.innerHTML = `
+                            <div style="text-align: center;">
+                                <div style="margin-bottom: 10px;">${newText}</div>
+                                <div id="progressInfo" style="font-size: 14px; color: #666; margin-top: 10px;">
+                                    <div>⏱️ 正在执行数据库操作，请继续等待</div>
+                                    <div style="margin-top: 5px;">🔍 大数据量处理需要更多时间</div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        loadingText.textContent = newText;
+                    }
+                } else {
+                    loadingText.textContent = newText;
+                }
+            }
+        }
+
+        // 隐藏加载状态
+        function hideLoading() {
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.style.display = 'none';
+        }
+
+        // 显示消息
+        function showMessage(message, type = 'info') {
+            const container = document.getElementById('messageContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${type}`;
+
+            const icon = type === 'success' ? 'check-circle' :
+                        type === 'error' ? 'exclamation-circle' : 
+                        type === 'warning' ? 'exclamation-triangle' : 'info-circle';
+
+            messageDiv.innerHTML = `
+                <i class="fas fa-${icon}"></i>
+                <span>${message}</span>
+                <button class="message-close" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+
+            container.appendChild(messageDiv);
+
+            // 根据消息类型调整自动移除时间
+            const autoRemoveTime = type === 'warning' ? 15000 : 
+                                  type === 'error' ? 12000 : 10000;
+
+            // 自动移除消息
+            setTimeout(() => {
+                if (messageDiv.parentElement) {
+                    messageDiv.remove();
+                }
+            }, autoRemoveTime);
+        }
+
+        // 显示确认对话框
+        function showConfirmDialog(message, onConfirm) {
+            const modal = document.getElementById('confirmModal');
+            const messageEl = document.getElementById('confirmMessage');
+            const yesBtn = document.getElementById('confirmYes');
+            const noBtn = document.getElementById('confirmNo');
+
+            messageEl.textContent = message;
+            modal.style.display = 'flex';
+
+            // 移除之前的事件监听器
+            const newYesBtn = yesBtn.cloneNode(true);
+            const newNoBtn = noBtn.cloneNode(true);
+            yesBtn.parentNode.replaceChild(newYesBtn, yesBtn);
+            noBtn.parentNode.replaceChild(newNoBtn, noBtn);
+
+            // 添加新的事件监听器
+            newYesBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+                onConfirm();
+            });
+
+            newNoBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+
+            // 点击背景关闭
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        }
+
+        // 显示同步结果
+        function showSyncResult(data) {
+            const form = document.getElementById('syncInternalToExternalFullForm');
+            const formCard = form.closest('.form-card');
+
+            // 移除之前的结果显示
+            const existingResult = formCard.querySelector('.sync-result');
+            if (existingResult) {
+                existingResult.remove();
+            }
+
+            // 创建结果显示元素
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `sync-result ${data.success ? 'success' : 'error'}`;
+
+            let resultHTML = `
+                <h4><i class="fas fa-${data.success ? 'check-circle' : 'exclamation-triangle'}"></i>
+                    ${data.success ? '同步完成' : '同步失败'}</h4>
+                <p>${data.summary || data.message}</p>
+            `;
+
+            if (data.success && data.total_differences > 0) {
+                resultHTML += `
+                    <div class="sync-stats">
+                        <div class="sync-stat">
+                            <div class="number">${data.total_differences}</div>
+                            <div class="label">检测差异</div>
+                        </div>
+                        <div class="sync-stat">
+                            <div class="number">${data.synced_count}</div>
+                            <div class="label">成功同步</div>
+                        </div>
+                        <div class="sync-stat">
+                            <div class="number">${data.failed_count}</div>
+                            <div class="label">同步失败</div>
+                        </div>
+                        <div class="sync-stat">
+                            <div class="number">${data.skipped_count}</div>
+                            <div class="label">跳过记录</div>
+                        </div>
+                        <div class="sync-stat">
+                            <div class="number">${data.id_remapped_count}</div>
+                            <div class="label">ID重编码</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (!data.success && data.error_details) {
+                resultHTML += `<p><strong>错误详情：</strong>${data.error_details}</p>`;
+            }
+
+            resultDiv.innerHTML = resultHTML;
+            formCard.appendChild(resultDiv);
+
+            // 滚动到结果显示区域
+            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+
+
+
+
+
+
+        // ==================== 直接匹配编码功能 ====================
+
+        // 初始化直接编码功能
+        function initializeDirectCoding() {
+            try {
+                console.log('初始化直接编码功能...');
+
+                // 设置测试匹配表单处理
+                const testMatchForm = document.getElementById('testMatchForm');
+                if (testMatchForm) {
+                    testMatchForm.addEventListener('submit', handleTestMatch);
+                    console.log('测试匹配表单事件监听器已设置');
+                } else {
+                    console.warn('未找到testMatchForm元素');
+                }
+
+                // 延迟加载统计信息，确保DOM完全加载
+                setTimeout(() => {
+                    console.log('开始加载映射统计信息...');
+                    loadMappingStats();
+                }, 100);
+
+            } catch (error) {
+                console.error('初始化直接编码功能失败:', error);
+            }
+        }
+
+        // 加载映射统计信息
+        async function loadMappingStats() {
+            try {
+                console.log('开始加载映射统计信息...');
+                const response = await fetch('/api/direct_coding/statistics');
+                console.log('API响应状态:', response.status);
+
+                const data = await response.json();
+                console.log('API返回数据:', data);
+
+                if (data.success) {
+                    const stats = data.data;
+                    console.log('统计数据:', stats);
+
+                    // 安全地更新DOM元素
+                    const totalMappingsEl = document.getElementById('totalMappings');
+                    const totalFrequencyEl = document.getElementById('totalFrequency');
+                    const avgFrequencyEl = document.getElementById('avgFrequency');
+                    const uniqueCodesEl = document.getElementById('uniqueCodes');
+
+                    if (totalMappingsEl) totalMappingsEl.textContent = stats.total_mappings || 0;
+                    if (totalFrequencyEl) totalFrequencyEl.textContent = stats.total_frequency || 0;
+                    if (avgFrequencyEl) avgFrequencyEl.textContent = (stats.avg_frequency || 0).toFixed(2);
+                    if (uniqueCodesEl) uniqueCodesEl.textContent = stats.unique_codes || 0;
+
+                    console.log('统计信息更新完成');
+                } else {
+                    console.error('API返回失败:', data.message);
+                    showMessage('获取映射统计失败: ' + (data.message || '未知错误'), 'error');
+                }
+            } catch (error) {
+                console.error('获取映射统计失败:', error);
+                showMessage('获取映射统计异常: ' + error.message, 'error');
+
+                // 设置默认值
+                const elements = ['totalMappings', 'totalFrequency', 'avgFrequency', 'uniqueCodes'];
+                elements.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = '错误';
+                });
+            }
+        }
+
+        // 获取未编码记录数量
+        async function getUncodedCount() {
+            const countDisplay = document.getElementById('uncoded_count_display');
+            countDisplay.textContent = '查询中...';
+
+            try {
+                const response = await fetch('/api/direct_coding/uncoded_count', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({})
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    countDisplay.textContent = `${data.data.count} 条记录`;
+                    countDisplay.style.color = data.data.count > 0 ? '#28a745' : '#6c757d';
+                } else {
+                    countDisplay.textContent = '查询失败';
+                    countDisplay.style.color = '#dc3545';
+                }
+            } catch (error) {
+                countDisplay.textContent = '查询错误';
+                countDisplay.style.color = '#dc3545';
+                console.error('获取未编码数量失败:', error);
+            }
+        }
+
+        // 处理单批记录
+        async function processSingleBatch() {
+            const limit = parseInt(document.getElementById('process_limit').value);
+
+            showLoading('正在处理记录...');
+
+            try {
+                const response = await fetch('/api/direct_coding/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        limit: limit
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const result = data.data;
+                    showMessage('success',
+                        `处理完成：共处理 ${result.total_records} 条记录，` +
+                        `匹配 ${result.matched_records} 条，` +
+                        `未匹配 ${result.unmatched_records} 条，` +
+                        `匹配率 ${result.match_rate.toFixed(1)}%`
+                    );
+
+                    // 刷新统计和未编码数量
+                    loadMappingStats();
+                    getUncodedCount();
+                } else {
+                    showMessage('error', `处理失败: ${data.message}`);
+                }
+            } catch (error) {
+                showMessage('error', `处理异常: ${error.message}`);
+                console.error('处理记录失败:', error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 批量处理模式
+        async function processBatchMode() {
+            const batchSize = parseInt(document.getElementById('batch_size').value);
+            const maxBatches = 20; // 最多处理20批
+
+            showLoading('正在批量处理记录...');
+
+            try {
+                const response = await fetch('/api/direct_coding/batch_process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        batch_size: batchSize,
+                        max_batches: maxBatches
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const result = data.data;
+                    let message = `批量处理完成：\n` +
+                        `总处理记录：${result.total_processed} 条\n` +
+                        `总匹配记录：${result.total_matched} 条\n` +
+                        `总未匹配记录：${result.total_unmatched} 条\n` +
+                        `整体匹配率：${result.overall_match_rate.toFixed(1)}%\n` +
+                        `处理批次：${result.batches_processed} 批`;
+
+                    showMessage('success', message);
+
+                    // 刷新统计和未编码数量
+                    loadMappingStats();
+                    getUncodedCount();
+                } else {
+                    showMessage('error', `批量处理失败: ${data.message}`);
+                }
+            } catch (error) {
+                showMessage('error', `批量处理异常: ${error.message}`);
+                console.error('批量处理失败:', error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 显示映射预览
+        async function showMappingPreview() {
+            try {
+                const response = await fetch('/api/direct_coding/mapping_preview?limit=50');
+                const data = await response.json();
+
+                if (data.success) {
+                    const mappings = data.data.preview_mappings;
+                    let html = '<div class="mapping-preview"><h4>映射预览</h4>';
+
+                    html += `<p>总映射数: ${data.data.total_mappings}, 显示前50个高频映射</p>`;
+
+                    html += '<div class="mapping-table"><table>';
+                    html += '<thead><tr><th>Type_Name</th><th>编码</th><th>频次</th></tr></thead>';
+                    html += '<tbody>';
+
+                    mappings.forEach(mapping => {
+                        html += `
+                            <tr>
+                                <td>${mapping.type_name}</td>
+                                <td>${mapping.code}</td>
+                                <td>${mapping.frequency}</td>
+                            </tr>
+                        `;
+                    });
+
+                    html += '</tbody></table></div></div>';
+
+                    showModal('映射预览', html);
+                } else {
+                    showMessage('error', '获取映射预览失败');
+                }
+            } catch (error) {
+                showMessage('error', `获取映射预览异常: ${error.message}`);
+                console.error('获取映射预览失败:', error);
+            }
+        }
+
+        // 刷新映射缓存
+        async function refreshMappingCache() {
+            showLoading('正在刷新映射缓存...');
+
+            try {
+                const response = await fetch('/api/direct_coding/refresh_cache', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('success', '映射缓存刷新成功');
+                    loadMappingStats();
+                } else {
+                    showMessage('error', '映射缓存刷新失败');
+                }
+            } catch (error) {
+                showMessage('error', `映射缓存刷新异常: ${error.message}`);
+                console.error('刷新映射缓存失败:', error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 处理测试匹配表单提交
+        async function handleTestMatch(event) {
+            event.preventDefault();
+
+            const typeName = document.getElementById('test_type_name').value.trim();
+            if (!typeName) {
+                showMessage('error', '请输入要测试的type_name');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/direct_coding/match_test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type_name: typeName
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const result = data.data;
+
+                    // 显示匹配结果
+                    document.getElementById('resultTypeName').textContent = result.type_name;
+                    document.getElementById('resultCode').textContent = result.matched_code || '无匹配';
+                    document.getElementById('resultStatus').textContent = result.has_match ? '匹配成功' : '无匹配';
+
+                    const matchResult = document.getElementById('matchResult');
+                    matchResult.style.display = 'block';
+
+                    if (result.has_match) {
+                        showMessage('success', `匹配成功：${result.matched_code}`);
+                    } else {
+                        showMessage('warning', '未找到匹配的编码');
+                    }
+                } else {
+                    showMessage('error', `测试匹配失败: ${data.message}`);
+                }
+            } catch (error) {
+                showMessage('error', `测试匹配异常: ${error.message}`);
+                console.error('测试匹配失败:', error);
+            }
+        }
+
+        // 显示模态框
+        function showModal(title, content) {
+            const modal = document.createElement('div');
+            modal.className = 'modal show';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>${title}</h3>
+                        <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        ${content}
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
+        }
+
+    </script>
+</body>
+</html>

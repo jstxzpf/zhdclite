@@ -1,0 +1,93 @@
+services:
+  # Flask应用服务 - 开发环境配置
+  household-data-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app-image
+      cache_from:
+        - household-data-system-base:${VERSION:-latest}
+        - household-data-system-app:${VERSION:-latest}
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    
+    container_name: household-data-system-dev
+    tty: true
+    command: tail -f /dev/null
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    
+    environment:
+      # Flask配置 - 开发环境
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - FLASK_APP=app.py
+      - FLASK_RUN_HOST=0.0.0.0
+      - FLASK_RUN_PORT=5000
+      
+      # 数据库配置 - 内部数据库
+      - DB_DRIVER=${DB_DRIVER:-ODBC Driver 18 for SQL Server}
+      - DB_SERVER=${DB_SERVER:-localhost}
+      - DB_DATABASE=${DB_DATABASE:-hhgzhdc}
+      - DB_UID=${DB_UID:-sa}
+      - DB_PWD=${DB_PWD}
+      - DB_ENCRYPT=${DB_ENCRYPT:-yes}
+      - DB_TRUST_CERT=${DB_TRUST_CERT:-yes}
+      
+      # 外部数据库配置
+      - EXTERNAL_DB_DRIVER=${EXTERNAL_DB_DRIVER:-ODBC Driver 18 for SQL Server}
+      - EXTERNAL_DB_SERVER=${EXTERNAL_DB_SERVER:-localhost}
+      - EXTERNAL_DB_DATABASE=${EXTERNAL_DB_DATABASE:-external_db}
+      - EXTERNAL_DB_UID=${EXTERNAL_DB_UID:-sa}
+      - EXTERNAL_DB_PWD=${EXTERNAL_DB_PWD}
+      - EXTERNAL_DB_ENCRYPT=${EXTERNAL_DB_ENCRYPT:-yes}
+      - EXTERNAL_DB_TRUST_CERT=${EXTERNAL_DB_TRUST_CERT:-yes}
+      
+      # 应用配置
+      - MAX_CONTENT_LENGTH=${MAX_CONTENT_LENGTH:-16777216}  # 16MB
+      - UPLOAD_FOLDER=/app/uploads
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+      
+    volumes:
+      # 开发环境：挂载源代码以支持热重载
+      - ./app.py:/app/app.py:ro
+      - ./src:/app/src:ro
+      - ./static:/app/static:ro
+      - ./sql:/app/sql:ro
+      
+      # 上传文件夹持久化
+      - ./uploads:/app/uploads
+      # 日志文件持久化
+      - ./logs:/app/logs
+      # 配置文件挂载
+      - ./config:/app/config:ro
+    
+    networks:
+      - household-network
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/system/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # 资源限制 - 开发环境相对宽松
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+# 网络配置
+networks:
+  household-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16

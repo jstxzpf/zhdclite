@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据统计分析 - 住户数据整理系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <!-- 添加Font Awesome图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- 添加Chart.js图表库 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- 加载遮罩 -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p id="loadingText">正在加载统计数据...</p>
+        </div>
+    </div>
+
+    <!-- 消息提示 -->
+    <div id="messageContainer" class="message-container"></div>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-chart-bar"></i> 数据统计分析</h1>
+                <p class="subtitle">全面的住户调查数据统计与分析</p>
+            </div>
+            <!-- 返回主页按钮 -->
+            <div class="header-actions">
+                <a href="/" class="btn btn-secondary">
+                    <i class="fas fa-home"></i> 返回主页
+                </a>
+            </div>
+        </header>
+
+        <!-- 筛选器区域 -->
+        <section class="filter-section">
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-filter"></i> 数据筛选</h3>
+                </div>
+                <div class="filter-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startDate">开始时间</label>
+                            <input type="month" id="startDate" name="start_date" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="endDate">结束时间</label>
+                            <input type="month" id="endDate" name="end_date" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="filterTown">乡镇</label>
+                            <select id="filterTown" name="town">
+                                <option value="">全部乡镇</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="filterVillage">村庄</label>
+                            <select id="filterVillage" name="village">
+                                <option value="">全部村庄</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="filterHousehold">户代码</label>
+                            <select id="filterHousehold" name="household">
+                                <option value="">全部户</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button type="button" id="applyFilter" class="btn btn-primary">
+                                <i class="fas fa-search"></i> 应用筛选
+                            </button>
+                            <button type="button" id="resetFilter" class="btn btn-secondary">
+                                <i class="fas fa-undo"></i> 重置
+                            </button>
+                        </div>
+                    </div>
+                    <!-- 当前筛选条件显示区域 -->
+                    <div class="filter-info">
+                        <p><i class="fas fa-info-circle"></i> 当前筛选条件：</p>
+                        <div class="current-filter-display">
+                            <span class="filter-item filter-time">
+                                <i class="fas fa-calendar"></i> 时间范围:
+                                <span id="displayTimeRange">未选择</span>
+                                <button type="button" class="filter-clear-btn" data-target="time" title="清除时间筛选">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </span>
+                            <span class="filter-item filter-location">
+                                <i class="fas fa-map-marker-alt"></i> 乡镇:
+                                <span id="displayTown">全部乡镇</span>
+                                <button type="button" class="filter-clear-btn" data-target="town" title="清除乡镇筛选">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </span>
+                            <span class="filter-item filter-location">
+                                <i class="fas fa-building"></i> 村庄:
+                                <span id="displayVillage">全部村庄</span>
+                                <button type="button" class="filter-clear-btn" data-target="village" title="清除村庄筛选">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </span>
+                            <span class="filter-item filter-household">
+                                <i class="fas fa-home"></i> 户代码:
+                                <span id="displayHousehold">全部户</span>
+                                <button type="button" class="filter-clear-btn" data-target="household" title="清除户代码筛选">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </span>
+                        </div>
+                        <div class="filter-actions">
+                            <button type="button" id="clearAllFilters" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-eraser"></i> 清空所有筛选
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 总体概览 -->
+        <section class="overview-section">
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-tachometer-alt"></i> 总体概览</h3>
+                </div>
+                <div class="overview-grid">
+                    <div class="overview-item">
+                        <div class="overview-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <div class="overview-content">
+                            <div class="overview-value" id="totalRecords">-</div>
+                            <div class="overview-label">总记录数</div>
+                        </div>
+                    </div>
+                    <div class="overview-item">
+                        <div class="overview-icon">
+                            <i class="fas fa-home"></i>
+                        </div>
+                        <div class="overview-content">
+                            <div class="overview-value" id="totalHouseholds">-</div>
+                            <div class="overview-label">总户数</div>
+                        </div>
+                    </div>
+                    <div class="overview-item">
+                        <div class="overview-icon">
+                            <i class="fas fa-calendar"></i>
+                        </div>
+                        <div class="overview-content">
+                            <div class="overview-value" id="totalMonths">-</div>
+                            <div class="overview-label">统计月份数</div>
+                        </div>
+                    </div>
+                    <div class="overview-item">
+                        <div class="overview-icon">
+                            <i class="fas fa-dollar-sign"></i>
+                        </div>
+                        <div class="overview-content">
+                            <div class="overview-value" id="totalIncome">-</div>
+                            <div class="overview-label">总收入(元)</div>
+                        </div>
+                    </div>
+                    <div class="overview-item">
+                        <div class="overview-icon">
+                            <i class="fas fa-shopping-cart"></i>
+                        </div>
+                        <div class="overview-content">
+                            <div class="overview-value" id="totalExpenditure">-</div>
+                            <div class="overview-label">总支出(元)</div>
+                        </div>
+                    </div>
+                    <div class="overview-item">
+                        <div class="overview-icon">
+                            <i class="fas fa-code"></i>
+                        </div>
+                        <div class="overview-content">
+                            <div class="overview-value" id="codingRate">-</div>
+                            <div class="overview-label">编码完成率</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 统计选项卡 -->
+        <section class="statistics-section">
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-chart-line"></i> 详细统计</h3>
+                </div>
+                
+                <!-- 选项卡导航 -->
+                <div class="tab-navigation">
+                    <div class="tab-item active" data-tab="household">
+                        <i class="fas fa-home"></i> 分户统计
+                    </div>
+                    <div class="tab-item" data-tab="town">
+                        <i class="fas fa-map-marker-alt"></i> 分乡镇统计
+                    </div>
+                    <div class="tab-item" data-tab="month">
+                        <i class="fas fa-calendar-alt"></i> 分月统计
+                    </div>
+                    <div class="tab-item" data-tab="consumption">
+                        <i class="fas fa-pie-chart"></i> 消费结构
+                    </div>
+                    <div class="tab-item" data-tab="missing">
+                        <i class="fas fa-exclamation-triangle"></i> 漏记账分析
+                    </div>
+                    <div class="tab-item" data-tab="analysis">
+                        <i class="fas fa-search-plus"></i> 深度分析
+                    </div>
+                </div>
+
+                <!-- 选项卡内容 -->
+                <div class="tab-content">
+                    <!-- 分户统计 -->
+                    <div class="tab-pane active" id="household-tab">
+                        <div class="statistics-content">
+                            <div class="chart-container">
+                                <canvas id="householdChart"></canvas>
+                            </div>
+                            <div class="table-container">
+                                <table id="householdTable" class="statistics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>户代码</th>
+                                            <th>户主姓名</th>
+                                            <th>年份</th>
+                                            <th>月份</th>
+                                            <th>记账笔数</th>
+                                            <th>收入笔数</th>
+                                            <th>支出笔数</th>
+                                            <th>收入总额</th>
+                                            <th>支出总额</th>
+                                            <th>编码完成率</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 分乡镇统计 -->
+                    <div class="tab-pane" id="town-tab">
+                        <div class="statistics-content">
+                            <div class="chart-container">
+                                <canvas id="townChart"></canvas>
+                            </div>
+                            <div class="table-container">
+                                <table id="townTable" class="statistics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>乡镇名称</th>
+                                            <th>户数</th>
+                                            <th>记账笔数</th>
+                                            <th>收入笔数</th>
+                                            <th>支出笔数</th>
+                                            <th>收入总额</th>
+                                            <th>支出总额</th>
+                                            <th>编码完成率</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 分月统计 -->
+                    <div class="tab-pane" id="month-tab">
+                        <div class="statistics-content">
+                            <div class="chart-container">
+                                <canvas id="monthChart"></canvas>
+                            </div>
+                            <div class="table-container">
+                                <table id="monthTable" class="statistics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>年份</th>
+                                            <th>月份</th>
+                                            <th>户数</th>
+                                            <th>记账笔数</th>
+                                            <th>收入笔数</th>
+                                            <th>支出笔数</th>
+                                            <th>收入总额</th>
+                                            <th>支出总额</th>
+                                            <th>编码完成率</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 消费结构 -->
+                    <div class="tab-pane" id="consumption-tab">
+                        <div class="statistics-content">
+                            <div class="chart-container">
+                                <canvas id="consumptionChart"></canvas>
+                            </div>
+                            <div class="table-container">
+                                <table id="consumptionTable" class="statistics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>消费类别</th>
+                                            <th>编码</th>
+                                            <th>记账笔数</th>
+                                            <th>总金额</th>
+                                            <th>平均金额</th>
+                                            <th>涉及户数</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 漏记账分析 -->
+                    <div class="tab-pane" id="missing-tab">
+                        <div class="statistics-content">
+
+                            <div class="chart-container">
+                                <canvas id="missingChart"></canvas>
+                            </div>
+                            <div class="table-container">
+                                <table id="missingTable" class="statistics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>户代码</th>
+                                            <th>户主姓名</th>
+                                            <th>记账天数</th>
+                                            <th>漏记账天数</th>
+                                            <th>总记账笔数</th>
+                                            <th>首次记账日期</th>
+                                            <th>最后记账日期</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 深度分析 -->
+                    <div class="tab-pane" id="analysis-tab">
+                        <div class="statistics-content">
+                            <!-- 分析控制区域 -->
+                            <div class="analysis-control">
+                                <div class="control-header">
+                                    <h4><i class="fas fa-search-plus"></i> 深度分析</h4>
+                                    <p class="control-description">
+                                        基于当前筛选条件进行深度分析，包括消费画像、异常检测和记账质量评估
+                                    </p>
+                                </div>
+
+                                <div class="analysis-info">
+                                    <div class="info-item">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span id="analysisScope">请先设置筛选条件</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <i class="fas fa-clock"></i>
+                                        <span id="analysisStatus">等待开始分析</span>
+                                    </div>
+                                </div>
+
+                                <div class="analysis-actions">
+                                    <button type="button" id="startAnalysis" class="btn btn-primary" disabled>
+                                        <i class="fas fa-play"></i> 开始深度分析
+                                    </button>
+                                    <button type="button" id="stopAnalysis" class="btn btn-secondary" style="display: none;">
+                                        <i class="fas fa-stop"></i> 停止分析
+                                    </button>
+                                </div>
+
+                                <!-- 进度条 -->
+                                <div class="analysis-progress" id="analysisProgress" style="display: none;">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="progressFill"></div>
+                                    </div>
+                                    <div class="progress-text">
+                                        <span id="progressText">准备中...</span>
+                                        <span id="progressPercent">0%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 分析结果区域 -->
+                            <div class="analysis-results" id="analysisResults" style="display: none;">
+                                <!-- 结果内容将通过JavaScript动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/statistics.js') }}"></script>
+</body>
+</html>
