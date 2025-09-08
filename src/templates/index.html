@@ -52,14 +52,8 @@
                 <i class="fas fa-upload"></i>
                 <span>数据导入</span>
             </div>
-            <div class="nav-item" data-section="data-sync">
-                <i class="fas fa-sync-alt"></i>
-                <span>数据同步</span>
-            </div>
-            <div class="nav-item" data-section="direct-coding">
-                <i class="fas fa-code"></i>
-                <span>直接编码</span>
-            </div>
+
+
             <div class="nav-item" data-section="statistics">
                 <i class="fas fa-chart-bar"></i>
                 <span>数据统计</span>
@@ -74,27 +68,7 @@
                 <p class="section-description">生成各类数据报表和台账文件</p>
             </div>
 
-            <div class="form-card">
-                <div class="card-header">
-                    <h3><i class="fas fa-file-excel"></i> 生成未编码表格</h3>
-                    <div class="card-status">
-                        <span class="status-badge ready">就绪</span>
-                    </div>
-                </div>
-                <form id="uncodedForm" action="/generate_uncoded_data" method="post" target="_blank">
-                    <div class="form-row">
-                        <p class="form-description">
-                            <i class="fas fa-info-circle"></i>
-                            将导出所有年份和月份的未编码记录
-                        </p>
-                    </div>
-                    <div class="form-row">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-download"></i> 生成并下载全部未编码数据
-                        </button>
-                    </div>
-                </form>
-            </div>
+
 
             <div class="form-card">
                 <div class="card-header">
@@ -217,49 +191,7 @@
                 <p class="section-description">导入各类Excel数据文件到系统数据库</p>
             </div>
 
-            <div class="form-card">
-                <div class="card-header">
-                    <h3><i class="fas fa-file-import"></i> 导入已编码表格</h3>
-                    <div class="card-status">
-                        <span class="status-badge ready">就绪</span>
-                    </div>
-                </div>
-                <form id="codedForm" action="/import_coded_data" method="post" enctype="multipart/form-data">
-                    <div class="file-upload-area">
-                        <input type="file" name="file" id="import_coded_file" accept=".xlsx,.xls" required>
-                        <label for="import_coded_file" class="file-upload-label">
-                            <i class="fas fa-cloud-upload-alt"></i>
-                            <span>选择Excel文件或拖拽到此处</span>
-                            <small>支持 .xlsx 和 .xls 格式，最大50MB</small>
-                        </label>
-                    </div>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-upload"></i> 导入已编码表格
-                    </button>
-                </form>
-            </div>
 
-            <div class="form-card">
-                <div class="card-header">
-                    <h3><i class="fas fa-map-marker-alt"></i> 导入地方点数据</h3>
-                    <div class="card-status">
-                        <span class="status-badge ready">就绪</span>
-                    </div>
-                </div>
-                <form id="localForm" action="/import_local_data" method="post" enctype="multipart/form-data">
-                    <div class="file-upload-area">
-                        <input type="file" name="file" id="import_local_file" accept=".xlsx,.xls" required>
-                        <label for="import_local_file" class="file-upload-label">
-                            <i class="fas fa-cloud-upload-alt"></i>
-                            <span>选择Excel文件或拖拽到此处</span>
-                            <small>支持 .xlsx 和 .xls 格式，最大50MB</small>
-                        </label>
-                    </div>
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-upload"></i> 导入地方点数据
-                    </button>
-                </form>
-            </div>
 
             <div class="form-card">
                 <div class="card-header">
@@ -284,167 +216,9 @@
             </div>
         </section>
 
-        <!-- 数据库同步模块 -->
-        <section class="module-section" id="data-sync">
-            <div class="section-header">
-                <h2><i class="fas fa-sync-alt"></i> 数据库同步</h2>
-                <p class="section-description">与外部数据库进行数据同步操作</p>
-            </div>
-
-            <div class="form-card">
-                <div class="card-header">
-                    <h3><i class="fas fa-database"></i> 同步外部数据库</h3>
-                    <div class="card-status">
-                        <span class="status-badge ready">就绪</span>
-                    </div>
-                </div>
-                <p class="description">从外部数据库同步最新的调查数据到本地系统</p>
-                <form id="syncForm" action="/sync_external_db" method="post">
-                    <button type="submit" class="btn btn-warning">
-                        <i class="fas fa-sync-alt"></i> 同步外部数据库
-                    </button>
-                </form>
-            </div>
 
 
-        </section>
 
-        <!-- 直接匹配编码模块 -->
-        <section class="module-section" id="direct-coding">
-            <div class="section-header">
-                <h2><i class="fas fa-code"></i> 直接匹配编码</h2>
-                <p class="section-description">基于type_name进行直接匹配编码，无需AI服务</p>
-            </div>
-
-            <!-- 统计信息卡片 -->
-            <div class="form-card">
-                <div class="card-header">
-                    <h3><i class="fas fa-chart-bar"></i> 映射统计</h3>
-                    <div class="card-status">
-                        <span class="status-badge ready">就绪</span>
-                    </div>
-                </div>
-                <div class="stats-display" id="mappingStats">
-                    <div class="stat-item">
-                        <span class="stat-label">总映射数：</span>
-                        <span class="stat-value" id="totalMappings">加载中...</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">总频次：</span>
-                        <span class="stat-value" id="totalFrequency">加载中...</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">平均频次：</span>
-                        <span class="stat-value" id="avgFrequency">加载中...</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">唯一编码数：</span>
-                        <span class="stat-value" id="uniqueCodes">加载中...</span>
-                    </div>
-                </div>
-                <div class="button-group">
-                    <button type="button" class="btn btn-secondary" onclick="loadMappingStats()">
-                        <i class="fas fa-refresh"></i> 刷新统计
-                    </button>
-                    <button type="button" class="btn btn-info" onclick="showMappingPreview()">
-                        <i class="fas fa-eye"></i> 查看映射
-                    </button>
-                    <button type="button" class="btn btn-warning" onclick="refreshMappingCache()">
-                        <i class="fas fa-sync-alt"></i> 刷新缓存
-                    </button>
-                </div>
-            </div>
-
-            <!-- 编码处理卡片 -->
-            <div class="form-card">
-                <div class="card-header">
-                    <h3><i class="fas fa-cogs"></i> 编码处理</h3>
-                    <div class="card-status">
-                        <span class="status-badge ready">就绪</span>
-                    </div>
-                </div>
-                <form id="directCodingForm">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="uncoded_count_display">待处理记录数：</label>
-                            <div class="count-display">
-                                <span id="uncoded_count_display">点击查询获取数量</span>
-                                <button type="button" class="btn btn-secondary btn-small" onclick="getUncodedCount()">
-                                    <i class="fas fa-search"></i> 查询数量
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="process_limit">处理数量限制：</label>
-                            <select name="process_limit" id="process_limit">
-                                <option value="100">100条</option>
-                                <option value="500" selected>500条</option>
-                                <option value="1000">1000条</option>
-                                <option value="2000">2000条</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="batch_size">批处理大小：</label>
-                            <select name="batch_size" id="batch_size">
-                                <option value="100">100条/批</option>
-                                <option value="500" selected>500条/批</option>
-                                <option value="1000">1000条/批</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="button-group">
-                        <button type="button" class="btn btn-primary" onclick="processSingleBatch()">
-                            <i class="fas fa-play"></i> 处理单批
-                        </button>
-                        <button type="button" class="btn btn-success" onclick="processBatchMode()">
-                            <i class="fas fa-forward"></i> 批量处理
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- 测试匹配卡片 -->
-            <div class="form-card">
-                <div class="card-header">
-                    <h3><i class="fas fa-search"></i> 测试匹配</h3>
-                    <div class="card-status">
-                        <span class="status-badge ready">就绪</span>
-                    </div>
-                </div>
-                <form id="testMatchForm">
-                    <div class="form-row">
-                        <div class="form-group full-width">
-                            <label for="test_type_name">Type Name：</label>
-                            <input type="text" name="test_type_name" id="test_type_name"
-                                   placeholder="输入要测试的type_name" required>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <button type="submit" class="btn btn-info">
-                            <i class="fas fa-search"></i> 测试匹配
-                        </button>
-                    </div>
-                    <div id="matchResult" class="match-result" style="display: none;">
-                        <div class="result-item">
-                            <span class="result-label">输入：</span>
-                            <span class="result-value" id="resultTypeName">-</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="result-label">匹配编码：</span>
-                            <span class="result-value" id="resultCode">-</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="result-label">匹配状态：</span>
-                            <span class="result-value" id="resultStatus">-</span>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </section>
 
 
     </div>
@@ -499,8 +273,7 @@
                 console.log('6. 启动系统时间更新...');
                 startSystemTimeUpdate();
 
-                console.log('7. 初始化直接编码功能...');
-                initializeDirectCoding();
+
 
                 console.log('页面初始化完成！');
             } catch (error) {
@@ -605,17 +378,13 @@
         // 设置表单处理器
         function setupFormHandlers() {
             // 数据生成表单
-            setupFormSubmit('uncodedForm', '正在生成未编码表格...');
             setupLedgerFormSubmit(); // 电子台账使用特殊处理
             setupFormSubmit('summaryForm', '正在生成汇总表...');
 
             // 数据导入表单
-            setupFormSubmit('codedForm', '正在导入已编码数据...', true);
-            setupFormSubmit('localForm', '正在导入地方点数据...', true);
             setupFormSubmit('nationalForm', '正在导入国家点数据...', true);
 
-            // 数据库同步表单
-            setupFormSubmit('syncForm', '正在同步外部数据库...', true);
+
         }
 
         // 设置表单提交处理
@@ -642,10 +411,7 @@
             let baseMessage = '';
 
             const messages = {
-                'codedForm': '确定要导入已编码数据吗？此操作将更新数据库中的相关记录。',
-                'localForm': '确定要导入地方点数据吗？此操作将向数据库添加新记录。',
-                'nationalForm': '确定要导入国家点数据吗？此操作将向数据库添加新记录。',
-                'syncForm': '确定要同步外部数据库吗？此操作可能需要较长时间。'
+                'nationalForm': '确定要导入国家点数据吗？此操作将向数据库添加新记录。'
             };
             baseMessage = messages[formId] || '确定要执行此操作吗？';
 
@@ -705,11 +471,7 @@
                 if (contentType && contentType.includes('application/json')) {
                     // 处理JSON响应
                     return response.json().then(data => {
-                        if (form.id === 'syncInternalToExternalFullForm') {
-                            showSyncResult(data);
-                        } else {
-                            showMessage(data.message || '操作完成', data.success ? 'success' : 'error');
-                        }
+                        showMessage(data.message || '操作完成', data.success ? 'success' : 'error');
                     });
                 } else if (contentType && contentType.includes('application/')) {
                     // 处理文件下载
@@ -942,7 +704,7 @@
 
         // 获取默认文件名
         function getDefaultFileName(action) {
-            if (action.includes('uncoded')) return '未编码数据.xlsx';
+
             if (action.includes('ledger')) return '电子台账.xlsx';
             return 'download.xlsx';
         }
@@ -1199,394 +961,15 @@
             });
         }
 
-        // 显示同步结果
-        function showSyncResult(data) {
-            const form = document.getElementById('syncInternalToExternalFullForm');
-            const formCard = form.closest('.form-card');
 
-            // 移除之前的结果显示
-            const existingResult = formCard.querySelector('.sync-result');
-            if (existingResult) {
-                existingResult.remove();
-            }
 
-            // 创建结果显示元素
-            const resultDiv = document.createElement('div');
-            resultDiv.className = `sync-result ${data.success ? 'success' : 'error'}`;
 
-            let resultHTML = `
-                <h4><i class="fas fa-${data.success ? 'check-circle' : 'exclamation-triangle'}"></i>
-                    ${data.success ? '同步完成' : '同步失败'}</h4>
-                <p>${data.summary || data.message}</p>
-            `;
 
-            if (data.success && data.total_differences > 0) {
-                resultHTML += `
-                    <div class="sync-stats">
-                        <div class="sync-stat">
-                            <div class="number">${data.total_differences}</div>
-                            <div class="label">检测差异</div>
-                        </div>
-                        <div class="sync-stat">
-                            <div class="number">${data.synced_count}</div>
-                            <div class="label">成功同步</div>
-                        </div>
-                        <div class="sync-stat">
-                            <div class="number">${data.failed_count}</div>
-                            <div class="label">同步失败</div>
-                        </div>
-                        <div class="sync-stat">
-                            <div class="number">${data.skipped_count}</div>
-                            <div class="label">跳过记录</div>
-                        </div>
-                        <div class="sync-stat">
-                            <div class="number">${data.id_remapped_count}</div>
-                            <div class="label">ID重编码</div>
-                        </div>
-                    </div>
-                `;
-            }
 
-            if (!data.success && data.error_details) {
-                resultHTML += `<p><strong>错误详情：</strong>${data.error_details}</p>`;
-            }
 
-            resultDiv.innerHTML = resultHTML;
-            formCard.appendChild(resultDiv);
 
-            // 滚动到结果显示区域
-            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
 
 
-
-
-
-
-
-        // ==================== 直接匹配编码功能 ====================
-
-        // 初始化直接编码功能
-        function initializeDirectCoding() {
-            try {
-                console.log('初始化直接编码功能...');
-
-                // 设置测试匹配表单处理
-                const testMatchForm = document.getElementById('testMatchForm');
-                if (testMatchForm) {
-                    testMatchForm.addEventListener('submit', handleTestMatch);
-                    console.log('测试匹配表单事件监听器已设置');
-                } else {
-                    console.warn('未找到testMatchForm元素');
-                }
-
-                // 延迟加载统计信息，确保DOM完全加载
-                setTimeout(() => {
-                    console.log('开始加载映射统计信息...');
-                    loadMappingStats();
-                }, 100);
-
-            } catch (error) {
-                console.error('初始化直接编码功能失败:', error);
-            }
-        }
-
-        // 加载映射统计信息
-        async function loadMappingStats() {
-            try {
-                console.log('开始加载映射统计信息...');
-                const response = await fetch('/api/direct_coding/statistics');
-                console.log('API响应状态:', response.status);
-
-                const data = await response.json();
-                console.log('API返回数据:', data);
-
-                if (data.success) {
-                    const stats = data.data;
-                    console.log('统计数据:', stats);
-
-                    // 安全地更新DOM元素
-                    const totalMappingsEl = document.getElementById('totalMappings');
-                    const totalFrequencyEl = document.getElementById('totalFrequency');
-                    const avgFrequencyEl = document.getElementById('avgFrequency');
-                    const uniqueCodesEl = document.getElementById('uniqueCodes');
-
-                    if (totalMappingsEl) totalMappingsEl.textContent = stats.total_mappings || 0;
-                    if (totalFrequencyEl) totalFrequencyEl.textContent = stats.total_frequency || 0;
-                    if (avgFrequencyEl) avgFrequencyEl.textContent = (stats.avg_frequency || 0).toFixed(2);
-                    if (uniqueCodesEl) uniqueCodesEl.textContent = stats.unique_codes || 0;
-
-                    console.log('统计信息更新完成');
-                } else {
-                    console.error('API返回失败:', data.message);
-                    showMessage('获取映射统计失败: ' + (data.message || '未知错误'), 'error');
-                }
-            } catch (error) {
-                console.error('获取映射统计失败:', error);
-                showMessage('获取映射统计异常: ' + error.message, 'error');
-
-                // 设置默认值
-                const elements = ['totalMappings', 'totalFrequency', 'avgFrequency', 'uniqueCodes'];
-                elements.forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.textContent = '错误';
-                });
-            }
-        }
-
-        // 获取未编码记录数量
-        async function getUncodedCount() {
-            const countDisplay = document.getElementById('uncoded_count_display');
-            countDisplay.textContent = '查询中...';
-
-            try {
-                const response = await fetch('/api/direct_coding/uncoded_count', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({})
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    countDisplay.textContent = `${data.data.count} 条记录`;
-                    countDisplay.style.color = data.data.count > 0 ? '#28a745' : '#6c757d';
-                } else {
-                    countDisplay.textContent = '查询失败';
-                    countDisplay.style.color = '#dc3545';
-                }
-            } catch (error) {
-                countDisplay.textContent = '查询错误';
-                countDisplay.style.color = '#dc3545';
-                console.error('获取未编码数量失败:', error);
-            }
-        }
-
-        // 处理单批记录
-        async function processSingleBatch() {
-            const limit = parseInt(document.getElementById('process_limit').value);
-
-            showLoading('正在处理记录...');
-
-            try {
-                const response = await fetch('/api/direct_coding/process', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        limit: limit
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    const result = data.data;
-                    showMessage('success',
-                        `处理完成：共处理 ${result.total_records} 条记录，` +
-                        `匹配 ${result.matched_records} 条，` +
-                        `未匹配 ${result.unmatched_records} 条，` +
-                        `匹配率 ${result.match_rate.toFixed(1)}%`
-                    );
-
-                    // 刷新统计和未编码数量
-                    loadMappingStats();
-                    getUncodedCount();
-                } else {
-                    showMessage('error', `处理失败: ${data.message}`);
-                }
-            } catch (error) {
-                showMessage('error', `处理异常: ${error.message}`);
-                console.error('处理记录失败:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // 批量处理模式
-        async function processBatchMode() {
-            const batchSize = parseInt(document.getElementById('batch_size').value);
-            const maxBatches = 20; // 最多处理20批
-
-            showLoading('正在批量处理记录...');
-
-            try {
-                const response = await fetch('/api/direct_coding/batch_process', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        batch_size: batchSize,
-                        max_batches: maxBatches
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    const result = data.data;
-                    let message = `批量处理完成：\n` +
-                        `总处理记录：${result.total_processed} 条\n` +
-                        `总匹配记录：${result.total_matched} 条\n` +
-                        `总未匹配记录：${result.total_unmatched} 条\n` +
-                        `整体匹配率：${result.overall_match_rate.toFixed(1)}%\n` +
-                        `处理批次：${result.batches_processed} 批`;
-
-                    showMessage('success', message);
-
-                    // 刷新统计和未编码数量
-                    loadMappingStats();
-                    getUncodedCount();
-                } else {
-                    showMessage('error', `批量处理失败: ${data.message}`);
-                }
-            } catch (error) {
-                showMessage('error', `批量处理异常: ${error.message}`);
-                console.error('批量处理失败:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // 显示映射预览
-        async function showMappingPreview() {
-            try {
-                const response = await fetch('/api/direct_coding/mapping_preview?limit=50');
-                const data = await response.json();
-
-                if (data.success) {
-                    const mappings = data.data.preview_mappings;
-                    let html = '<div class="mapping-preview"><h4>映射预览</h4>';
-
-                    html += `<p>总映射数: ${data.data.total_mappings}, 显示前50个高频映射</p>`;
-
-                    html += '<div class="mapping-table"><table>';
-                    html += '<thead><tr><th>Type_Name</th><th>编码</th><th>频次</th></tr></thead>';
-                    html += '<tbody>';
-
-                    mappings.forEach(mapping => {
-                        html += `
-                            <tr>
-                                <td>${mapping.type_name}</td>
-                                <td>${mapping.code}</td>
-                                <td>${mapping.frequency}</td>
-                            </tr>
-                        `;
-                    });
-
-                    html += '</tbody></table></div></div>';
-
-                    showModal('映射预览', html);
-                } else {
-                    showMessage('error', '获取映射预览失败');
-                }
-            } catch (error) {
-                showMessage('error', `获取映射预览异常: ${error.message}`);
-                console.error('获取映射预览失败:', error);
-            }
-        }
-
-        // 刷新映射缓存
-        async function refreshMappingCache() {
-            showLoading('正在刷新映射缓存...');
-
-            try {
-                const response = await fetch('/api/direct_coding/refresh_cache', {
-                    method: 'POST'
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showMessage('success', '映射缓存刷新成功');
-                    loadMappingStats();
-                } else {
-                    showMessage('error', '映射缓存刷新失败');
-                }
-            } catch (error) {
-                showMessage('error', `映射缓存刷新异常: ${error.message}`);
-                console.error('刷新映射缓存失败:', error);
-            } finally {
-                hideLoading();
-            }
-        }
-
-        // 处理测试匹配表单提交
-        async function handleTestMatch(event) {
-            event.preventDefault();
-
-            const typeName = document.getElementById('test_type_name').value.trim();
-            if (!typeName) {
-                showMessage('error', '请输入要测试的type_name');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/direct_coding/match_test', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        type_name: typeName
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    const result = data.data;
-
-                    // 显示匹配结果
-                    document.getElementById('resultTypeName').textContent = result.type_name;
-                    document.getElementById('resultCode').textContent = result.matched_code || '无匹配';
-                    document.getElementById('resultStatus').textContent = result.has_match ? '匹配成功' : '无匹配';
-
-                    const matchResult = document.getElementById('matchResult');
-                    matchResult.style.display = 'block';
-
-                    if (result.has_match) {
-                        showMessage('success', `匹配成功：${result.matched_code}`);
-                    } else {
-                        showMessage('warning', '未找到匹配的编码');
-                    }
-                } else {
-                    showMessage('error', `测试匹配失败: ${data.message}`);
-                }
-            } catch (error) {
-                showMessage('error', `测试匹配异常: ${error.message}`);
-                console.error('测试匹配失败:', error);
-            }
-        }
-
-        // 显示模态框
-        function showModal(title, content) {
-            const modal = document.createElement('div');
-            modal.className = 'modal show';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>${title}</h3>
-                        <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        ${content}
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-
-            modal.addEventListener('click', function(e) {
-                if (e.target === modal) {
-                    modal.remove();
-                }
-            });
-        }
 
     </script>
 </body>

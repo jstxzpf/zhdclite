@@ -1,6 +1,6 @@
 """
 数据生成模块蓝图
-包含生成未编码数据和电子台账的功能
+包含生成电子台账和汇总表的功能
 """
 
 from flask import Blueprint, request, send_file, current_app, make_response, Response, jsonify
@@ -75,28 +75,7 @@ def init_blueprint(database, processor, excel_operations, error_handler):
     excel_ops = excel_operations
     handle_errors = error_handler
 
-@data_generation_bp.route('/generate_uncoded_data', methods=['POST'])
-def generate_uncoded_data():
-    """生成未编码数据表格"""
-    @handle_errors
-    def _generate_uncoded_data():
-        logger.info("开始生成所有未编码数据")
 
-        # 使用事务处理
-        try:
-            # 更新所有记录的note字段 - 暂时跳过以避免排序规则冲突
-            # data_processor.update_all_note()
-            df = data_processor.get_all_uncoded_data()
-            file_path = excel_ops.save_all_uncoded_data(df)
-
-            logger.info(f"未编码数据生成成功 - 文件路径: {file_path}")
-            return send_file(file_path, as_attachment=True)
-        except Exception as e:
-            logger.error(f"生成未编码数据失败: {str(e)}")
-            # 注意：连接池会自动处理事务回滚
-            raise
-
-    return _generate_uncoded_data()
 
 @data_generation_bp.route('/generate_electronic_ledger', methods=['POST'])
 def generate_electronic_ledger():

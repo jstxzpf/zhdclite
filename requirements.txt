@@ -1,6 +1,6 @@
 Flask==3.0.3
-numpy==1.24.3
-pandas==2.0.3
+numpy>=1.26.0
+pandas>=2.1.0
 openpyxl==3.1.2
 pyodbc==5.0.1
 werkzeug==3.0.3
@@ -11,4 +11,4 @@ xlrd==2.0.1
 # Excel格式设置相关依赖
 et-xmlfile==1.1.0
 
-pytest==8.2.2
+pytest>=8.0.0

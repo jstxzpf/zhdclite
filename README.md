@@ -29,18 +29,16 @@ pip install -r requirements.txt
 1) 环境变量（推荐用于容器/CI 环境）
    - DATABASE_HOST, DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD
    - 可选：DB_DRIVER（默认 ODBC Driver 18 for SQL Server）、DB_ENCRYPT、DB_TRUST_CERT
-2) 配置文件（本地开发常用）：config/mssql.json、config/wbfwq.json
+2) 配置文件（本地开发常用）：config/mssql.json
 
 出于安全考虑，仓库仅提供示例文件：
 - config/mssql.json.example
-- config/wbfwq.json.example
 
 请根据示例创建实际配置文件：
 
 ```bash
 cp config/mssql.json.example config/mssql.json
-cp config/wbfwq.json.example config/wbfwq.json
-# 然后编辑上述 .json 填入真实连接信息
+# 然后编辑 mssql.json 填入真实连接信息
 ```
 
 ## 运行应用
@@ -67,7 +65,8 @@ python app.py
 - 移除 Docker 相关（Dockerfile、docker-compose*、.dockerignore、nginx 配置等）
 - 移除部署与构建脚本（scripts/、deploy_docker.sh 等）
 - 移除调试与临时测试文件（debug_*、test_*、若干报告文档等）
-- 删除包含敏感信息的本地配置（config/*.json），保留示例文件供本地创建
+- 删除包含敏感信息的本地配置（config/mssql.json），保留示例文件供本地创建
+- 移除外部数据库同步功能（删除 database_sync 蓝图及相关代码）
 - 精简 requirements.txt（移除未使用的 aiohttp、asyncio、requests、python-docx、fonttools）
 
 ## 许可证

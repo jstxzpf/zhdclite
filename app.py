@@ -5,8 +5,8 @@ from src.excel_operations import ExcelOperations
 from src.utils import handle_errors, allowed_file, validate_file_size, MAX_FILE_SIZE
 from src.blueprints.data_generation import data_generation_bp
 from src.blueprints.data_import import data_import_bp
-from src.blueprints.database_sync import database_sync_bp
-from src.blueprints.direct_coding import direct_coding_bp
+
+
 from src.blueprints.statistics import statistics_bp
 from src.blueprints.household_analysis import household_analysis_bp
 import os
@@ -30,7 +30,7 @@ app = Flask(__name__, template_folder='src/templates')
 db = None
 data_processor = None
 excel_ops = None
-direct_processor = None
+
 
 try:
     # 添加启动延迟，等待依赖服务准备就绪
@@ -42,9 +42,7 @@ try:
     data_processor = DataProcessor(db)
     excel_ops = ExcelOperations()
 
-    # 初始化直接匹配处理器
-    from src.direct_match_processor import DirectMatchProcessor
-    direct_processor = DirectMatchProcessor(db)
+
 
     logger.info("应用程序初始化成功")
 except Exception as e:
@@ -61,23 +59,23 @@ except Exception as e:
 # 初始化蓝图依赖
 from src.blueprints.data_generation import init_blueprint as init_data_generation
 from src.blueprints.data_import import init_blueprint as init_data_import
-from src.blueprints.database_sync import init_blueprint as init_database_sync
-from src.blueprints.direct_coding import init_blueprint as init_direct_coding
+
+
 from src.blueprints.statistics import init_blueprint as init_statistics
 from src.blueprints.household_analysis import init_blueprint as init_household_analysis
 
 init_data_generation(db, data_processor, excel_ops, handle_errors)
 init_data_import(db, excel_ops, handle_errors, allowed_file, validate_file_size, app.config)
-init_database_sync(db, handle_errors)
-init_direct_coding(db, direct_processor, handle_errors)
+
+
 init_statistics(db, handle_errors)
 init_household_analysis(db, handle_errors)
 
 # 注册蓝图
 app.register_blueprint(data_generation_bp)
 app.register_blueprint(data_import_bp)
-app.register_blueprint(database_sync_bp)
-app.register_blueprint(direct_coding_bp, url_prefix='/')
+
+
 app.register_blueprint(statistics_bp, url_prefix='/')
 app.register_blueprint(household_analysis_bp, url_prefix='/')
 

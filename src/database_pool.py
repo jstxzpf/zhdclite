@@ -12,7 +12,6 @@ import threading
 
 # 全局连接池实例
 _pool = None
-_external_pool = None
 _pool_lock = threading.Lock()
 
 class ConnectionPool:
@@ -185,11 +184,3 @@ def get_connection_pool():
                 _pool = ConnectionPool('config/mssql.json', pool_name="Internal")
     return _pool
 
-def get_external_connection_pool():
-    """获取外部数据库连接池的单例"""
-    global _external_pool
-    if _external_pool is None:
-        with _pool_lock:
-            if _external_pool is None:
-                _external_pool = ConnectionPool('config/wbfwq.json', pool_name="External")
-    return _external_pool

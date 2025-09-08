@@ -128,69 +128,7 @@ class ExcelOperations:
         workbook.save(file_path)
         workbook.close()
 
-    def save_uncoded_data(self, df, month, year=None):
-        """
-        保存未编码数据到Excel文件
 
-        Args:
-            df: 数据框
-            month: 月份 (格式: "01", "02", ...)
-            year: 年份 (格式: "2024", "2025", ...), 如果为None则使用当前年份
-
-        Returns:
-            str: 生成的文件路径
-        """
-        try:
-            # 如果没有提供年份，使用当前年份
-            if year is None:
-                from datetime import datetime
-                year = str(datetime.now().year)
-
-            # 构建新的文件名格式：YYYY-MM_月份月未编码.xlsx
-            filename = f"{year}-{month.zfill(2)}_{month}月未编码.xlsx"
-            filename = sanitize_filename(filename)
-
-            # 使用应用程序的uploads目录而不是用户主目录
-            output_dir = os.path.join(os.getcwd(), 'uploads')
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir, mode=0o777, exist_ok=True)
-            file_path = os.path.join(output_dir, filename)
-
-            self._save_df_to_excel(df, file_path, '未编码数据')
-
-            return file_path
-        except Exception as e:
-            raise Exception(f"保存未编码数据失败: {str(e)}")
-
-    def save_all_uncoded_data(self, df):
-        """
-        保存所有未编码数据到Excel文件
-
-        Args:
-            df: 数据框
-
-        Returns:
-            str: 生成的文件路径
-        """
-        try:
-            from datetime import datetime
-
-            # 构建文件名：全部未编码数据_YYYY年MM月DD日_HHMMSS.xlsx
-            timestamp = datetime.now().strftime("%Y年%m月%d日_%H%M%S")
-            filename = f"全部未编码数据_{timestamp}.xlsx"
-            filename = sanitize_filename(filename)
-
-            # 使用应用程序的uploads目录
-            output_dir = os.path.join(os.getcwd(), 'uploads')
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir, mode=0o777, exist_ok=True)
-            file_path = os.path.join(output_dir, filename)
-
-            self._save_df_to_excel(df, file_path, '全部未编码数据')
-
-            return file_path
-        except Exception as e:
-            raise Exception(f"保存所有未编码数据失败: {str(e)}")
 
     def save_summary_table(self, df, year, period, category):
         """
