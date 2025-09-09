@@ -57,14 +57,14 @@ def _read_and_process_csv(file_path):
             break
         except UnicodeDecodeError:
             continue
-    
+
     if df is None:
          raise ValueError("无法使用常用编码 (UTF-8, GBK) 读取CSV文件")
 
     if df.empty:
         logger.warning("CSV文件为空")
         raise ValueError("CSV文件为空")
-    
+
     # 修正统计局CSV文件的字段
     df = _fix_statistical_csv_columns(df)
     logger.info("CSV文件字段修正完成")
@@ -87,16 +87,16 @@ def _process_uploaded_file(file, operation_name, allowed_extensions, read_func):
     if not validate_file_size(file):
         logger.warning(f"文件大小超过限制: {file.filename}")
         return None, ("文件大小超过50MB限制", 400), None
-    
+
     # 4. 安全处理文件名并确保唯一性
     filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
     file_path = os.path.join(app_config['UPLOAD_FOLDER'], filename)
-    
+
     try:
         # 5. 保存文件
         file.save(file_path)
         logger.info(f"文件保存成功: {file_path}")
-        
+
         # 6. 使用回调函数读取和处理文件内容
         df = read_func(file_path)
         return df, None, file_path
@@ -116,14 +116,14 @@ def _fix_statistical_csv_columns(df):
     3. 处理时间戳字段
     """
     logger.info(f"待修正的CSV文件原始列数: {len(df.columns)}")
-    
+
     # 新的统计局CSV文件标准字段名（22个字段）
     new_standard_columns_22 = [
-        'SID', '县码', '样本编码', '年', '月', '页码', '行码', '编码', '数量', '金额', 
-        '数量2', '人码', '是否网购', '记账方式', '品名', '问题类型', '记账说明', 
+        'SID', '县码', '样本编码', '年', '月', '页码', '行码', '编码', '数量', '金额',
+        '数量2', '人码', '是否网购', '记账方式', '品名', '问题类型', '记账说明',
         '记账审核说明', '记账日期', '创建时间', '更新时间', '账页生成设备标识'
     ]
-    
+
     # 根据列数进行处理
     if len(df.columns) == 22:
         df.columns = new_standard_columns_22
@@ -149,7 +149,7 @@ def _fix_statistical_csv_columns(df):
 
     # 删除完全空白的行
     df = df.dropna(how='all')
-    
+
     # 清理无效的数值数据，将 'n.n' 等非数字值转换为空值 (NaN)
     numeric_columns = ['数量', '金额', '数量2']
     for col in numeric_columns:
@@ -185,15 +185,15 @@ def _fix_statistical_csv_columns(df):
         else:
             df['创建时间'] = df['记账日期']
         logger.info("已处理日期时间字段")
-    
+
     # 处理字段名映射：人码 -> 人代码（为了兼容后续处理）
     if '人码' in df.columns:
         df['人代码'] = df['人码']
         logger.info("已添加人代码字段映射")
-    
+
     logger.info(f"修正后的CSV数据形状: {df.shape}")
     logger.info(f"修正后的列名: {list(df.columns)}")
-    
+
     return df
 
 
@@ -240,7 +240,7 @@ def import_national_data():
 
         if error:
             return error[0], error[1]
-        
+
         try:
             required_columns = ['SID', '编码', '品名', '人码', '创建时间']
             if not all(col in df.columns for col in required_columns):
@@ -635,3 +635,188 @@ def import_household_list():
             _cleanup_file(file_path)
 
     return _import_household_list()
+
+
+# =============================
+# 调查点村名单 管理（导出/导入）
+# 参照“调查点户名单管理”的实现风格
+# =============================
+
+def _read_village_list_excel(file_path):
+    """读取调查点村名单Excel文件，并进行基础清洗与校验"""
+    try:
+        df = excel_ops.read_excel(file_path)
+        logger.info(f"成功读取调查点村名单Excel文件，共 {len(df)} 行数据")
+
+        # 必需字段
+        required_columns = ['户代码前12位', '所在乡镇街道', '村居名称']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Excel文件缺少必需的列: {missing_columns}")
+
+        # 清理关键字段
+        df['户代码前12位'] = df['户代码前12位'].astype(str).str.strip()
+        df['所在乡镇街道'] = df['所在乡镇街道'].astype(str).fillna('').str.strip()
+        df['村居名称'] = df['村居名称'].astype(str).fillna('').str.strip()
+
+        # 可选字段
+        optional_text_cols = ['调查点类型', '调查员姓名', '调查员电话', '城乡属性']
+        for col in optional_text_cols:
+            if col not in df.columns:
+                df[col] = ''
+            else:
+                df[col] = df[col].astype(str).fillna('').str.strip()
+
+        # 数量列（可选，数值）
+        if '数量' not in df.columns:
+            df['数量'] = None
+        else:
+            df['数量'] = pd.to_numeric(df['数量'], errors='coerce')
+
+        # 删除关键字段为空的行
+        df = df.dropna(subset=['户代码前12位'])
+        df = df[df['户代码前12位'].str.len() > 0]
+
+        # 去重（以“户代码前12位”为主键）
+        df = df.drop_duplicates(subset=['户代码前12位'])
+
+        logger.info(f"调查点村名单数据清理完成，有效数据 {len(df)} 行")
+        return df
+    except Exception as e:
+        logger.error(f"读取调查点村名单Excel文件失败: {str(e)}")
+        raise
+
+
+@data_import_bp.route('/export_village_list', methods=['GET'])
+def export_village_list():
+    """导出调查点村名单到Excel"""
+    @handle_errors
+    def _export_village_list():
+        logger.info("开始导出调查点村名单")
+        try:
+            sql = """
+            SELECT 户代码前12位, 数量, 调查点类型, 所在乡镇街道, 村居名称, 调查员姓名, 调查员电话, 城乡属性
+            FROM 调查点村名单
+            ORDER BY 户代码前12位
+            """
+            result = db.execute_query_safe(sql)
+            if not result:
+                return jsonify({'success': False, 'message': '没有找到调查点村名单数据'}), 404
+
+            columns = ['户代码前12位', '数量', '调查点类型', '所在乡镇街道', '村居名称', '调查员姓名', '调查员电话', '城乡属性']
+            df = pd.DataFrame(result, columns=columns)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"调查点村名单_{timestamp}.xlsx"
+
+            upload_dir = os.path.abspath(app_config['UPLOAD_FOLDER'])
+            if not os.path.exists(upload_dir):
+                os.makedirs(upload_dir, exist_ok=True)
+            file_path = os.path.join(upload_dir, filename)
+
+            excel_ops._save_df_to_excel(df, file_path, '调查点村名单')
+            logger.info(f"调查点村名单导出成功: {file_path}")
+
+            return send_file(
+                file_path,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        except Exception as e:
+            logger.error(f"导出调查点村名单失败: {str(e)}")
+            return jsonify({'success': False, 'message': f'导出失败: {str(e)}'}), 500
+    return _export_village_list()
+
+
+@data_import_bp.route('/import_village_list', methods=['POST'])
+def import_village_list():
+    """导入调查点村名单Excel文件（UPSERT by 户代码前12位）"""
+    @handle_errors
+    def _import_village_list():
+        logger.info("开始导入调查点村名单")
+        if 'file' not in request.files:
+            return "未选择文件", 400
+        file = request.files['file']
+        df, error, file_path = _process_uploaded_file(
+            file, "导入调查点村名单", {'xlsx', 'xls'}, _read_village_list_excel
+        )
+        if error:
+            return error[0], error[1]
+        try:
+            if df.empty:
+                return "Excel文件中没有有效数据", 400
+
+            total_rows = len(df)
+            new_count = 0
+            updated_count = 0
+            error_count = 0
+            error_details = []
+
+            with db.pool.get_cursor() as cursor:
+                for idx, row in df.iterrows():
+                    try:
+                        户代码前12位 = str(row['户代码前12位']).strip()
+                        所在乡镇街道 = str(row['所在乡镇街道']).strip() if pd.notna(row['所在乡镇街道']) else ''
+                        村居名称 = str(row['村居名称']).strip() if pd.notna(row['村居名称']) else ''
+                        调查点类型 = str(row['调查点类型']).strip() if pd.notna(row['调查点类型']) else ''
+                        调查员姓名 = str(row['调查员姓名']).strip() if pd.notna(row['调查员姓名']) else ''
+                        调查员电话 = str(row['调查员电话']).strip() if pd.notna(row['调查员电话']) else ''
+                        城乡属性 = str(row['城乡属性']).strip() if pd.notna(row['城乡属性']) else ''
+                        数量 = row['数量'] if pd.notna(row['数量']) else None
+
+                        if not 户代码前12位:
+                            error_count += 1
+                            error_details.append(f"第{idx+2}行: 户代码前12位为空")
+                            continue
+                        if not 所在乡镇街道 or not 村居名称:
+                            error_count += 1
+                            error_details.append(f"第{idx+2}行: 所在乡镇街道或村居名称为空")
+                            continue
+
+                        # 是否存在
+                        check_sql = "SELECT COUNT(*) FROM 调查点村名单 WHERE 户代码前12位 = ?"
+                        cursor.execute(check_sql, (户代码前12位,))
+                        exists = cursor.fetchone()[0] > 0
+
+                        if exists:
+                            update_sql = """
+                            UPDATE 调查点村名单
+                            SET 数量 = ?, 调查点类型 = ?, 所在乡镇街道 = ?, 村居名称 = ?, 调查员姓名 = ?, 调查员电话 = ?, 城乡属性 = ?
+                            WHERE 户代码前12位 = ?
+                            """
+                            cursor.execute(update_sql, (数量, 调查点类型, 所在乡镇街道, 村居名称, 调查员姓名, 调查员电话, 城乡属性, 户代码前12位))
+                            updated_count += 1
+                        else:
+                            insert_sql = """
+                            INSERT INTO 调查点村名单 (户代码前12位, 数量, 调查点类型, 所在乡镇街道, 村居名称, 调查员姓名, 调查员电话, 城乡属性)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """
+                            cursor.execute(insert_sql, (户代码前12位, 数量, 调查点类型, 所在乡镇街道, 村居名称, 调查员姓名, 调查员电话, 城乡属性))
+                            new_count += 1
+                    except Exception as e:
+                        error_count += 1
+                        error_details.append(f"第{idx+2}行处理失败: {str(e)}")
+                        logger.warning(f"处理第{idx+2}行数据失败: {str(e)}")
+                        continue
+
+            summary_message = "调查点村名单导入完成！\n"
+            summary_message += f"• 总处理记录数：{total_rows} 条\n"
+            summary_message += f"• 新增记录：{new_count} 条\n"
+            summary_message += f"• 更新记录：{updated_count} 条\n"
+            if error_count > 0:
+                summary_message += f"• 错误记录：{error_count} 条\n"
+                if error_details:
+                    summary_message += "• 错误详情：\n"
+                    for d in error_details[:5]:
+                        summary_message += f"  - {d}\n"
+                    if len(error_details) > 5:
+                        summary_message += f"  - 还有 {len(error_details) - 5} 个错误未显示\n"
+            logger.info(f"调查点村名单导入完成 - 新增: {new_count}, 更新: {updated_count}, 错误: {error_count}")
+            return summary_message
+        except Exception as e:
+            logger.error(f"导入调查点村名单过程中发生错误: {str(e)}")
+            return f"导入过程中发生错误: {str(e)}", 500
+        finally:
+            _cleanup_file(file_path)
+    return _import_village_list()

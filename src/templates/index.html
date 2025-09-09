@@ -208,6 +208,39 @@
                 </div>
             </div>
 
+
+            <div class="form-card">
+                <div class="card-header">
+                    <h3><i class="fas fa-map-marked-alt"></i> 调查点村名单管理</h3>
+                    <div class="card-status">
+                        <span class="status-badge ready">就绪</span>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="button-group">
+                        <button type="button" class="btn btn-primary" onclick="exportVillageList()">
+                            <i class="fas fa-download"></i> 导出村名单
+                        </button>
+                        <button type="button" class="btn btn-info" onclick="document.getElementById('import_village_file').click()">
+                            <i class="fas fa-upload"></i> 选择Excel文件导入
+                        </button>
+                    </div>
+                    <form id="villageForm" action="/import_village_list" method="post" enctype="multipart/form-data" style="display: none;">
+                        <input type="file" name="file" id="import_village_file" accept=".xlsx,.xls" onchange="importVillageList()">
+                    </form>
+                    <div class="form-help">
+                        <p><i class="fas fa-info-circle"></i> 功能说明：</p>
+                        <ul>
+                            <li>导出：将当前数据库中的调查点村名单导出为Excel文件</li>
+                            <li>导入：上传Excel文件更新调查点村名单数据</li>
+                            <li>支持新增和更新操作，根据“户代码前12位”自动判断</li>
+                            <li>必需字段：户代码前12位、所在乡镇街道、村居名称</li>
+                            <li>可选字段：数量、调查点类型、调查员姓名、调查员电话、城乡属性</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
             <div class="form-card">
                 <div class="card-header">
                     <h3><i class="fas fa-flag"></i> 导入国家点数据</h3>
@@ -1112,6 +1145,73 @@
                 showMessage(`导出失败: ${error.message}`, 'error');
             });
         }
+
+            // 调查点村名单导出功能
+            function exportVillageList() {
+                showLoading('正在导出调查点村名单...');
+                fetch('/export_village_list', { method: 'GET' })
+                    .then(response => {
+                        if (response.ok) {
+                            const contentDisposition = response.headers.get('Content-Disposition');
+                            let filename = '调查点村名单.xlsx';
+                            if (contentDisposition) {
+                                const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                                if (match && match[1]) filename = match[1].replace(/['"]/g, '');
+                            }
+                            return response.blob().then(blob => {
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.style.display = 'none';
+                                a.href = url;
+                                a.download = filename;
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                                hideLoading();
+                                showMessage('调查点村名单导出成功！', 'success');
+                            });
+                        } else {
+                            return response.json().then(data => { throw new Error(data.message || '导出失败'); });
+                        }
+                    })
+                    .catch(error => {
+                        hideLoading();
+                        console.error('导出调查点村名单失败:', error);
+                        showMessage(`导出失败: ${error.message}`, 'error');
+                    });
+            }
+
+            // 调查点村名单导入功能
+            function importVillageList() {
+                const fileInput = document.getElementById('import_village_file');
+                const file = fileInput.files[0];
+                if (!file) {
+                    showMessage('请选择要导入的Excel文件', 'warning');
+                    return;
+                }
+                const allowedTypes = [
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'application/vnd.ms-excel'
+                ];
+                if (!allowedTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+                    showMessage('请选择Excel文件（.xlsx或.xls格式）', 'error');
+                    fileInput.value = '';
+                    return;
+                }
+                const maxSize = 50 * 1024 * 1024; // 50MB
+                if (file.size > maxSize) {
+                    showMessage('文件大小不能超过50MB', 'error');
+                    fileInput.value = '';
+                    return;
+                }
+                const confirmMessage = `确定要导入调查点村名单吗？\n\n文件名: ${file.name}\n文件大小: ${(file.size / 1024 / 1024).toFixed(2)}MB\n\n此操作将更新数据库中的村名单数据。`;
+                showConfirmDialog(confirmMessage, () => {
+                    const form = document.getElementById('villageForm');
+                    submitFormWithProgress(form, '正在导入调查点村名单...');
+                });
+            }
+
 
         // 调查点户名单导入功能
         function importHouseholdList() {
