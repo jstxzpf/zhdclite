@@ -332,7 +332,7 @@ class FilterBuilder:
     def add_town_filter(self, town: str, town_codes: Dict[str, str]):
         """添加乡镇筛选条件（旧版本，基于代码前缀）"""
         if town and town in town_codes:
-            self.conditions.append(f"LEFT({self.table_alias}.hudm, 9) = ?")
+            self.conditions.append(f"SUBSTR({self.table_alias}.hudm, 1, 9) = ?")
             self.params.append(town_codes[town])
 
     def add_town_filter_with_mapping(self, town: str, mapping: Dict):
@@ -341,16 +341,16 @@ class FilterBuilder:
             village_codes = mapping['town_to_villages'][town]
             if village_codes:
                 placeholders = ','.join(['?' for _ in village_codes])
-                self.conditions.append(f"LEFT({self.table_alias}.hudm, 12) IN ({placeholders})")
+                self.conditions.append(f"SUBSTR({self.table_alias}.hudm, 1, 12) IN ({placeholders})")
                 self.params.extend(village_codes)
-    
+
     def add_village_filter(self, village_code: str):
         """添加村庄筛选条件，基于村庄代码"""
         if village_code:
             # village_code是从v_town_village_list视图获取的村代码
-            self.conditions.append(f"LEFT({self.table_alias}.hudm, 12) = ?")
+            self.conditions.append(f"SUBSTR({self.table_alias}.hudm, 1, 12) = ?")
             self.params.append(village_code)
-    
+
     def add_household_filter(self, household: str):
         """添加户代码筛选条件"""
         if household:

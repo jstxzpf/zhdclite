@@ -208,8 +208,8 @@ if __name__ == '__main__':
             logger.info(f"创建上传文件夹: {app.config['UPLOAD_FOLDER']}")
 
         logger.info("应用程序启动")
-        # 从环境变量获取端口，默认为5000
-        port = int(os.environ.get('FLASK_RUN_PORT', 5000))
+        # 从环境变量获取端口，默认为8888
+        port = int(os.environ.get('FLASK_RUN_PORT', 8888))
         app.run(host='0.0.0.0', port=port, debug=False)
     except Exception as e:
         logger.error(f"应用程序启动失败: {str(e)}")

@@ -118,12 +118,18 @@ def generate_electronic_ledger():
             import time
             start_time = time.time()
 
-            # 更新类型信息（保持原有逻辑）
+            # 更新类型信息（SQLite 兼容写法：使用相关子查询代替 UPDATE ... FROM JOIN）
             with db.pool.get_cursor() as cursor:
-                cursor.execute('''UPDATE  调查点台账合并
-SET         type = 调查品种编码.收支类别
-FROM      调查点台账合并 INNER JOIN
-                调查品种编码 ON 调查点台账合并.code = 调查品种编码.帐目编码''')
+                cursor.execute('''
+UPDATE 调查点台账合并
+SET type = (
+    SELECT 收支类别 FROM 调查品种编码 c
+    WHERE c.帐目编码 = 调查点台账合并.code
+)
+WHERE EXISTS (
+    SELECT 1 FROM 调查品种编码 c
+    WHERE c.帐目编码 = 调查点台账合并.code
+)''')
 
             # 使用新的电子台账生成器
             from src.electronic_ledger_generator import ElectronicLedgerGenerator
@@ -410,37 +416,37 @@ def generate_summary_table():
                         COUNT(code) AS 总结构数,
                         COUNT(CASE WHEN 收支类别 = 1 THEN code END) AS 收入结构,
                         COUNT(CASE WHEN 收支类别 = 2 THEN code END) AS 支出结构,
-                        COUNT(CASE WHEN 收支类别 = 2 AND LEFT(code, 2) <> '31' THEN code END) AS 非食品结构,
-                        SUM(CASE WHEN 收支类别 = 1 AND LEFT(code, 2) NOT IN ('25', '26', '42') THEN 总金额 ELSE 0 END) AS 纯收入,
-                        SUM(CASE WHEN (LEFT(code, 2) BETWEEN '31' AND '38' OR LEFT(code, 2) IN ('41','42','43')) THEN 总金额 ELSE 0 END) AS 消费支出,
+                        COUNT(CASE WHEN 收支类别 = 2 AND SUBSTR(code, 1, 2) <> '31' THEN code END) AS 非食品结构,
+                        SUM(CASE WHEN 收支类别 = 1 AND SUBSTR(code, 1, 2) NOT IN ('25', '26', '42') THEN 总金额 ELSE 0 END) AS 纯收入,
+                        SUM(CASE WHEN (SUBSTR(code, 1, 2) BETWEEN '31' AND '38' OR SUBSTR(code, 1, 2) IN ('41','42','43')) THEN 总金额 ELSE 0 END) AS 消费支出,
                         SUM(记账笔数) AS 总笔数,
-                        SUM(CASE WHEN 收支类别 = 2 AND LEFT(code, 2) = '31' THEN 总金额 ELSE 0 END) AS 食品支出,
-                        SUM(CASE WHEN LEFT(code, 2) IN ('21', '22', '23', '24') THEN 总金额 ELSE 0 END) AS 总收入,
-                        SUM(CASE WHEN LEFT(code, 2) = '36' THEN 总金额 ELSE 0 END) AS 娱乐支出,
-                        SUM(CASE WHEN LEFT(code, 2) = '21' THEN 总金额 ELSE 0 END) AS 工资性收入,
+                        SUM(CASE WHEN 收支类别 = 2 AND SUBSTR(code, 1, 2) = '31' THEN 总金额 ELSE 0 END) AS 食品支出,
+                        SUM(CASE WHEN SUBSTR(code, 1, 2) IN ('21', '22', '23', '24') THEN 总金额 ELSE 0 END) AS 总收入,
+                        SUM(CASE WHEN SUBSTR(code, 1, 2) = '36' THEN 总金额 ELSE 0 END) AS 娱乐支出,
+                        SUM(CASE WHEN SUBSTR(code, 1, 2) = '21' THEN 总金额 ELSE 0 END) AS 工资性收入,
                         SUM(
-                            CASE WHEN LEFT(code, 2) = '22' THEN 总金额 ELSE 0 END
-                            - CASE WHEN LEFT(code, 2) = '51' THEN 总金额 ELSE 0 END
-                            + CASE WHEN LEFT(code, 2) = '12' THEN 总金额 ELSE 0 END
-                            - CASE WHEN LEFT(code, 2) = '13' THEN 总金额 ELSE 0 END
-                            - CASE WHEN LEFT(code, 2) = '14' THEN 总金额 ELSE 0 END
+                            CASE WHEN SUBSTR(code, 1, 2) = '22' THEN 总金额 ELSE 0 END
+                            - CASE WHEN SUBSTR(code, 1, 2) = '51' THEN 总金额 ELSE 0 END
+                            + CASE WHEN SUBSTR(code, 1, 2) = '12' THEN 总金额 ELSE 0 END
+                            - CASE WHEN SUBSTR(code, 1, 2) = '13' THEN 总金额 ELSE 0 END
+                            - CASE WHEN SUBSTR(code, 1, 2) = '14' THEN 总金额 ELSE 0 END
                         ) AS 经营收入,
                         SUM(
-                            CASE WHEN LEFT(code, 2) = '23' THEN 总金额 ELSE 0 END
-                            - CASE WHEN LEFT(code, 2) = '52' THEN 总金额 ELSE 0 END
+                            CASE WHEN SUBSTR(code, 1, 2) = '23' THEN 总金额 ELSE 0 END
+                            - CASE WHEN SUBSTR(code, 1, 2) = '52' THEN 总金额 ELSE 0 END
                         ) AS 财产性收入,
                         SUM(
-                            CASE WHEN LEFT(code, 2) = '24' THEN 总金额 ELSE 0 END
-                            - CASE WHEN LEFT(code, 3) = '531' THEN 总金额 ELSE 0 END
-                            - CASE WHEN LEFT(code, 3) = '534' THEN 总金额 ELSE 0 END
+                            CASE WHEN SUBSTR(code, 1, 2) = '24' THEN 总金额 ELSE 0 END
+                            - CASE WHEN SUBSTR(code, 1, 3) = '531' THEN 总金额 ELSE 0 END
+                            - CASE WHEN SUBSTR(code, 1, 3) = '534' THEN 总金额 ELSE 0 END
                         ) AS 转移性收入,
                         SUM(
-                            CASE WHEN LEFT(code, 2) = '51' THEN 总金额 ELSE 0 END
-                            + CASE WHEN LEFT(code, 2) = '13' THEN 总金额 ELSE 0 END
-                            + CASE WHEN LEFT(code, 2) = '14' THEN 总金额 ELSE 0 END
+                            CASE WHEN SUBSTR(code, 1, 2) = '51' THEN 总金额 ELSE 0 END
+                            + CASE WHEN SUBSTR(code, 1, 2) = '13' THEN 总金额 ELSE 0 END
+                            + CASE WHEN SUBSTR(code, 1, 2) = '14' THEN 总金额 ELSE 0 END
                         ) AS 经营成本,
-                        SUM(CASE WHEN LEFT(code, 2) IN ('21', '22', '23', '24','12') THEN 总金额 ELSE 0 END) -
-                            SUM(CASE WHEN LEFT(code, 2) IN ('51', '52', '53','13','14') THEN 总金额 ELSE 0 END) AS 可支配收入
+                        SUM(CASE WHEN SUBSTR(code, 1, 2) IN ('21', '22', '23', '24','12') THEN 总金额 ELSE 0 END) -
+                            SUM(CASE WHEN SUBSTR(code, 1, 2) IN ('51', '52', '53','13','14') THEN 总金额 ELSE 0 END) AS 可支配收入
                     FROM IncomeExpenseDetails
                     GROUP BY hudm, 户主姓名, 人数
                 ),
@@ -456,7 +462,7 @@ def generate_summary_table():
                         b.城乡属性,
                         b.调查点类型
                     FROM AggregatedHouseholdData AS a
-                    INNER JOIN 调查点村名单 AS b ON LEFT(a.hudm, 12) = b.户代码前12位
+                    INNER JOIN 调查点村名单 AS b ON SUBSTR(a.hudm, 1, 12) = b.户代码前12位
                 ),
 
                 -- CTE 4: 主要聚合计算

@@ -74,6 +74,9 @@ function setupEventListeners() {
     // 清空所有筛选按钮事件
     document.getElementById('clearAllFilters').addEventListener('click', clearAllFilters);
 
+    // 刷新缓存按钮
+    document.getElementById('refreshCache').addEventListener('click', refreshStatisticsCache);
+
     // 选项卡切换事件
     document.querySelectorAll('.tab-item').forEach(tab => {
         tab.addEventListener('click', function() {
@@ -318,21 +321,103 @@ function clearAllFilters() {
     showMessage('info', '已清空所有筛选条件');
 }
 
-// 加载总体概览数据
+// 刷新统计缓存
+async function refreshStatisticsCache() {
+    const refreshBtn = document.getElementById('refreshCache');
+    const originalText = refreshBtn.innerHTML;
+
+    try {
+        // 显示加载状态
+        refreshBtn.disabled = true;
+        refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 刷新中...';
+
+        showLoading('正在刷新统计缓存...');
+
+        const response = await fetch('/api/statistics/refresh_cache', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showMessage('success', '统计缓存刷新成功！数据已更新');
+
+            // 刷新当前页面数据
+            await loadOverviewData();
+
+            // 如果当前在乡镇统计页面，也刷新乡镇数据
+            const activeTab = document.querySelector('.tab-item.active').dataset.tab;
+            if (activeTab === 'town') {
+                await loadTownStatistics();
+            }
+        } else {
+            throw new Error(data.message || '刷新缓存失败');
+        }
+
+    } catch (error) {
+        console.error('刷新缓存失败:', error);
+        showMessage('error', `刷新缓存失败: ${error.message}`);
+    } finally {
+        // 恢复按钮状态
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = originalText;
+        hideLoading();
+    }
+}
+
+// 加载总体概览数据（优化版本，添加缓存和性能监控）
 async function loadOverviewData() {
+    const startTime = performance.now();
+
     try {
         const params = getFilterParams();
         const url = params ? `/api/statistics/overview?${params}` : '/api/statistics/overview';
-        const response = await fetch(url);
+
+        // 添加请求超时和重试机制
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+
+        const response = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+                'Cache-Control': 'max-age=60' // 客户端缓存1分钟
+            }
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const data = await response.json();
 
         if (data.success) {
             updateOverviewDisplay(data.data);
+
+            // 性能监控
+            const endTime = performance.now();
+            const loadTime = endTime - startTime;
+            console.log(`概览数据加载耗时: ${loadTime.toFixed(2)}ms`);
+
+            // 如果加载时间超过2秒，显示性能提示
+            if (loadTime > 2000) {
+                showMessage('warning', `数据加载较慢 (${(loadTime/1000).toFixed(1)}秒)，建议刷新缓存`);
+            }
         } else {
             throw new Error(data.message);
         }
     } catch (error) {
-        console.error('加载概览数据失败:', error);
+        if (error.name === 'AbortError') {
+            console.error('概览数据加载超时');
+            showMessage('error', '数据加载超时，请检查网络连接或刷新页面重试');
+        } else {
+            console.error('加载概览数据失败:', error);
+            showMessage('error', `加载概览数据失败: ${error.message}`);
+        }
         throw error;
     }
 }

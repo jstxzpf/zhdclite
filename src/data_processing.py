@@ -5,7 +5,7 @@ class DataProcessor:
         self.db = db
 
     def update_note(self, year, month):
-        sql = "UPDATE 调查点台账合并 SET note=note+type_name COLLATE database_default,ybz='1' where year=? and month=? and ybz<>'1'"
+        sql = "UPDATE 调查点台账合并 SET note=COALESCE(note,'') || COALESCE(type_name,''), ybz='1' WHERE year=? AND month=? AND ybz<>'1'"
         with self.db.pool.get_cursor() as cursor:
             cursor.execute(sql, (year, month))
             # 事务会在上下文管理器退出时自动提交
@@ -17,7 +17,7 @@ class DataProcessor:
         FROM 调查点台账合并 INNER JOIN 调查点户名单 ON 调查点台账合并.hudm = 调查点户名单.户代码
         WHERE 调查点台账合并.year = ? AND 调查点台账合并.month = ? AND 调查点台账合并.code IS NULL
             AND 调查点台账合并.type_name IS NOT NULL
-            AND LTRIM(RTRIM(调查点台账合并.type_name)) COLLATE Chinese_PRC_CI_AS <> ''
+            AND TRIM(调查点台账合并.type_name) <> ''
         ORDER BY 调查点台账合并.type_name
         """
         # 使用连接池执行查询，避免连接冲突
@@ -40,11 +40,11 @@ class DataProcessor:
         sql = """
         UPDATE 调查点台账合并
         SET note = CASE
-            WHEN type_name IS NOT NULL AND LTRIM(RTRIM(type_name)) COLLATE Chinese_PRC_CI_AS <> ''
-            THEN type_name COLLATE Chinese_PRC_CI_AS
+            WHEN type_name IS NOT NULL AND TRIM(type_name) <> ''
+            THEN type_name
             ELSE note
         END
-        WHERE type_name IS NOT NULL AND LTRIM(RTRIM(type_name)) COLLATE Chinese_PRC_CI_AS <> ''
+        WHERE type_name IS NOT NULL AND TRIM(type_name) <> ''
         """
         with self.db.pool.get_cursor() as cursor:
             cursor.execute(sql)

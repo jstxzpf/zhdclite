@@ -110,14 +110,14 @@ class ElectronicLedgerGenerator:
 
         # 根据是否是村庄级别决定筛选条件
         if is_village:
-            # 村庄级别：精确匹配户代码前12位与村代码
-            where_condition = "LEFT(t.hudm, 12) = ?"
+            # 村庄级别：精确匹配户代码前12位与村代码（SQLite 使用 SUBSTR）
+            where_condition = "SUBSTR(t.hudm, 1, 12) = ?"
             code_param = area_code
         else:
             # 乡镇级别：匹配户代码前12位与该乡镇的所有村代码
             if isinstance(area_code, list) and area_code:
                 placeholders = ','.join(['?' for _ in area_code])
-                where_condition = f"LEFT(t.hudm, 12) IN ({placeholders})"
+                where_condition = f"SUBSTR(t.hudm, 1, 12) IN ({placeholders})"
                 code_param = area_code
             else:
                 self.logger.error("乡镇级别查询缺少村代码列表")
@@ -170,14 +170,14 @@ class ElectronicLedgerGenerator:
 
         # 根据是否是村庄级别决定筛选条件
         if is_village:
-            # 村庄级别：精确匹配户代码前12位与村代码
-            where_condition = "LEFT(t.hudm, 12) = ?"
+            # 村庄级别：精确匹配户代码前12位与村代码（SQLite 使用 SUBSTR）
+            where_condition = "SUBSTR(t.hudm, 1, 12) = ?"
             code_param = area_code
         else:
             # 乡镇级别：匹配户代码前12位与该乡镇的所有村代码
             if isinstance(area_code, list) and area_code:
                 placeholders = ','.join(['?' for _ in area_code])
-                where_condition = f"LEFT(t.hudm, 12) IN ({placeholders})"
+                where_condition = f"SUBSTR(t.hudm, 1, 12) IN ({placeholders})"
                 code_param = area_code
             else:
                 self.logger.error("乡镇级别查询缺少村代码列表")
@@ -233,14 +233,14 @@ class ElectronicLedgerGenerator:
 
         # 根据是否是村庄级别决定筛选条件
         if is_village:
-            # 村庄级别：精确匹配户代码前12位与村代码
-            where_condition = "LEFT(t.hudm, 12) = ?"
+            # 村庄级别：精确匹配户代码前12位与村代码（SQLite 使用 SUBSTR）
+            where_condition = "SUBSTR(t.hudm, 1, 12) = ?"
             code_param = area_code
         else:
             # 乡镇级别：匹配户代码前12位与该乡镇的所有村代码
             if isinstance(area_code, list) and area_code:
                 placeholders = ','.join(['?' for _ in area_code])
-                where_condition = f"LEFT(t.hudm, 12) IN ({placeholders})"
+                where_condition = f"SUBSTR(t.hudm, 1, 12) IN ({placeholders})"
                 code_param = area_code
             else:
                 self.logger.error("乡镇级别查询缺少村代码列表")
@@ -248,11 +248,11 @@ class ElectronicLedgerGenerator:
         
         # 简化的分户消费结构查询
         sql = f"""
-        SELECT 
+        SELECT
             t.hudm AS 户代码,
             h.户主姓名,
             t.code AS 编码,
-            ISNULL(c.帐目指标名称, '未知') AS 帐目指标名称,
+            COALESCE(c.帐目指标名称, '未知') AS 帐目指标名称,
             SUM(t.money) AS 总金额,
             COUNT(*) AS 记账笔数
         FROM 调查点台账合并 t

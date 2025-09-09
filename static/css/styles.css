@@ -335,6 +335,15 @@ select:focus, input[type="file"]:focus {
     background: #5a6268;
 }
 
+.btn-info {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    color: white;
+}
+
+.btn-info:hover {
+    background: linear-gradient(135deg, #138496 0%, #117a8b 100%);
+}
+
 /* 文件上传样式 */
 .file-upload-area {
     position: relative;
@@ -1289,6 +1298,32 @@ select:focus, input[type="file"]:focus {
 .button-group .btn {
     flex: 1;
     min-width: 150px;
+}
+
+/* 表单帮助信息样式 */
+.form-help {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #17a2b8;
+}
+
+.form-help p {
+    margin: 0 0 10px 0;
+    font-weight: 600;
+    color: #495057;
+}
+
+.form-help ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.form-help li {
+    margin: 5px 0;
+    color: #6c757d;
+    font-size: 0.9rem;
 }
 
 /* 优化统计样式 */

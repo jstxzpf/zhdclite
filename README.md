@@ -47,13 +47,13 @@ cp config/mssql.json.example config/mssql.json
 # 可选：复制环境变量示例
 cp .env.example .env
 
-# 启动（默认端口 5000，可通过 FLASK_RUN_PORT 指定）
+# 启动（默认端口 8888，可通过 FLASK_RUN_PORT 指定）
 python app.py
 ```
 
 启动后访问：
-- http://localhost:5000/         首页
-- http://localhost:5000/health   健康检查
+- http://localhost:8888/         首页
+- http://localhost:8888/health   健康检查
 
 提示：若未正确配置数据库，应用会以“受限模式”启动（部分业务接口不可用，但页面与健康检查可用）。
 

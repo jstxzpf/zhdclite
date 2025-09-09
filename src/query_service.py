@@ -111,15 +111,15 @@ class QueryService:
             分户统计结果列表
         """
         sql = f"""
-        SELECT 
-            t.hudm, h.户主姓名, t.year, t.month, COUNT(*),
+        SELECT
+            t.hudm, h.`户主姓名`, t.year, t.month, COUNT(*),
             COUNT(CASE WHEN t.type = 1 THEN 1 END), COUNT(CASE WHEN t.type = 2 THEN 1 END),
             SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END),
             SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END),
             COUNT(CASE WHEN t.code IS NULL THEN 1 END), COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END)
-        FROM 调查点台账合并 t LEFT JOIN 调查点户名单 h ON t.hudm = h.户代码
+        FROM `调查点台账合并` t LEFT JOIN `调查点户名单` h ON t.hudm = h.`户代码`
         {where_clause}
-        GROUP BY t.hudm, h.户主姓名, t.year, t.month
+        GROUP BY t.hudm, h.`户主姓名`, t.year, t.month
         ORDER BY t.year, t.month, t.hudm
         """
         
@@ -140,22 +140,32 @@ class QueryService:
         params: Optional[List] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        使用 v_town_village_list 视图按乡镇名称统计（以村代码集合筛选）
+        使用优化后的查询获取乡镇统计数据
+        优先使用缓存表，如果有筛选条件则使用实时查询
         """
-        # 从视图获取该乡镇对应的所有12位村代码
-        village_codes_sql = """
-        SELECT DISTINCT 村代码 FROM v_town_village_list
-        WHERE 所在乡镇街道 = ? AND 村代码 IS NOT NULL AND 村代码 <> ''
-        """
-        villages = self.db.execute_query_safe(village_codes_sql, [town_name])
-        village_codes = [row[0] for row in villages] if villages else []
-        if not village_codes:
-            return None
+        # 如果没有筛选条件，直接使用缓存表
+        if not where_clause or where_clause.strip() == "":
+            cache_sql = """
+            SELECT 记账笔数, 户数, 收入笔数, 支出笔数, 收入总额, 支出总额, 未编码笔数, 已编码笔数
+            FROM town_statistics_cache
+            WHERE 乡镇名称 = ?
+            """
+            result = self.db.execute_query_safe(cache_sql, [town_name])
+            if result and result[0]:
+                row = result[0]
+                return {
+                    '记账笔数': row[0] or 0,
+                    '户数': row[1] or 0,
+                    '收入笔数': row[2] or 0,
+                    '支出笔数': row[3] or 0,
+                    '收入总额': float(row[4] or 0),
+                    '支出总额': float(row[5] or 0),
+                    '未编码笔数': row[6] or 0,
+                    '已编码笔数': row[7] or 0
+                }
 
-        placeholders = ','.join(['?' for _ in village_codes])
-        town_where_clause = f"{where_clause} {'AND' if where_clause else 'WHERE'} LEFT(t.hudm, 12) IN ({placeholders})"
-        town_params = (params or []) + village_codes
-
+        # 有筛选条件时使用优化后的实时查询
+        # 使用JOIN代替子查询，提高性能
         sql = f"""
         SELECT
             COUNT(*), COUNT(DISTINCT t.hudm),
@@ -163,11 +173,14 @@ class QueryService:
             SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END),
             SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END),
             COUNT(CASE WHEN t.code IS NULL THEN 1 END), COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END)
-        FROM 调查点台账合并 t
-        {town_where_clause}
+        FROM `调查点台账合并` t
+        INNER JOIN `v_town_village_list` v ON SUBSTR(t.hudm, 1, 12) = v.村代码
+        WHERE v.所在乡镇街道 = ? {' AND ' + where_clause if where_clause else ''}
         """
 
-        result = self.db.execute_query_safe(sql, town_params)
+        query_params = [town_name] + (params or [])
+        result = self.db.execute_query_safe(sql, query_params)
+
         if result and result[0][0] is not None:
             row = result[0]
             return {
@@ -181,6 +194,134 @@ class QueryService:
                 '已编码笔数': row[7] or 0
             }
         return None
+
+    def get_all_town_statistics(
+        self,
+        where_clause: str = "",
+        params: Optional[List] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        一次性获取所有乡镇统计数据，避免N+1查询问题
+        """
+        # 如果没有筛选条件，直接使用缓存表
+        if not where_clause or where_clause.strip() == "":
+            cache_sql = """
+            SELECT 乡镇名称, 记账笔数, 户数, 收入笔数, 支出笔数, 收入总额, 支出总额, 未编码笔数, 已编码笔数
+            FROM town_statistics_cache
+            ORDER BY 乡镇名称
+            """
+            result = self.db.execute_query_safe(cache_sql)
+            if result:
+                return [
+                    {
+                        '乡镇名称': row[0],
+                        '记账笔数': row[1] or 0,
+                        '户数': row[2] or 0,
+                        '收入笔数': row[3] or 0,
+                        '支出笔数': row[4] or 0,
+                        '收入总额': float(row[5] or 0),
+                        '支出总额': float(row[6] or 0),
+                        '未编码笔数': row[7] or 0,
+                        '已编码笔数': row[8] or 0
+                    }
+                    for row in result
+                ]
+
+        # 有筛选条件时使用优化后的实时查询
+        sql = f"""
+        SELECT
+            v.所在乡镇街道 as 乡镇名称,
+            COUNT(*) as 记账笔数,
+            COUNT(DISTINCT t.hudm) as 户数,
+            COUNT(CASE WHEN t.type = 1 THEN 1 END) as 收入笔数,
+            COUNT(CASE WHEN t.type = 2 THEN 1 END) as 支出笔数,
+            SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END) as 收入总额,
+            SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END) as 支出总额,
+            COUNT(CASE WHEN t.code IS NULL THEN 1 END) as 未编码笔数,
+            COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END) as 已编码笔数
+        FROM `v_town_village_list` v
+        LEFT JOIN `调查点台账合并` t ON SUBSTR(t.hudm, 1, 12) = v.村代码
+        {('WHERE ' + where_clause) if where_clause else ''}
+        GROUP BY v.所在乡镇街道
+        ORDER BY v.所在乡镇街道
+        """
+
+        result = self.db.execute_query_safe(sql, params or [])
+        if result:
+            return [
+                {
+                    '乡镇名称': row[0],
+                    '记账笔数': row[1] or 0,
+                    '户数': row[2] or 0,
+                    '收入笔数': row[3] or 0,
+                    '支出笔数': row[4] or 0,
+                    '收入总额': float(row[5] or 0),
+                    '支出总额': float(row[6] or 0),
+                    '未编码笔数': row[7] or 0,
+                    '已编码笔数': row[8] or 0
+                }
+                for row in result
+            ]
+
+        return []
+
+    def refresh_statistics_cache(self):
+        """刷新统计缓存表"""
+        try:
+            self.logger.info("开始刷新统计缓存...")
+
+            # 刷新乡镇统计缓存
+            self.db.execute_query_safe("DELETE FROM town_statistics_cache")
+
+            town_refresh_sql = """
+            INSERT INTO town_statistics_cache
+            SELECT
+                v.所在乡镇街道 as 乡镇名称,
+                COUNT(t.id) as 记账笔数,
+                COUNT(DISTINCT t.hudm) as 户数,
+                COUNT(CASE WHEN t.type = 1 THEN 1 END) as 收入笔数,
+                COUNT(CASE WHEN t.type = 2 THEN 1 END) as 支出笔数,
+                SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END) as 收入总额,
+                SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END) as 支出总额,
+                COUNT(CASE WHEN t.code IS NULL THEN 1 END) as 未编码笔数,
+                COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END) as 已编码笔数,
+                datetime('now') as 更新时间
+            FROM v_town_village_list v
+            LEFT JOIN 调查点台账合并 t ON SUBSTR(t.hudm, 1, 12) = v.村代码
+            GROUP BY v.所在乡镇街道
+            """
+
+            self.db.execute_query_safe(town_refresh_sql)
+
+            # 刷新月度统计缓存
+            self.db.execute_query_safe("DELETE FROM month_statistics_cache")
+
+            month_refresh_sql = """
+            INSERT INTO month_statistics_cache
+            SELECT
+                t.year as 年份,
+                t.month as 月份,
+                COUNT(*) as 记账笔数,
+                COUNT(DISTINCT t.hudm) as 户数,
+                COUNT(CASE WHEN t.type = 1 THEN 1 END) as 收入笔数,
+                COUNT(CASE WHEN t.type = 2 THEN 1 END) as 支出笔数,
+                SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END) as 收入总额,
+                SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END) as 支出总额,
+                COUNT(CASE WHEN t.code IS NULL THEN 1 END) as 未编码笔数,
+                COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END) as 已编码笔数,
+                datetime('now') as 更新时间
+            FROM 调查点台账合并 t
+            GROUP BY t.year, t.month
+            """
+
+            self.db.execute_query_safe(month_refresh_sql)
+
+            self.logger.info("统计缓存刷新完成")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"刷新统计缓存失败: {e}")
+            return False
     
     def get_consumption_structure(
         self, 
@@ -194,7 +335,7 @@ class QueryService:
         - 类别名称：映射为中文
         """
         consumption_where = where_clause or ""
-        extra = "(LEFT(t.code, 2) IN ('31','32','33','34','35','36','37','38') AND t.type = 2 AND t.code IS NOT NULL)"
+        extra = "(SUBSTR(t.code, 1, 2) IN ('31','32','33','34','35','36','37','38') AND t.type = 2 AND t.code IS NOT NULL)"
         if consumption_where.strip():
             consumption_where += f" AND {extra}"
         else:
@@ -202,8 +343,8 @@ class QueryService:
 
         sql = f"""
         SELECT
-            LEFT(t.code, 2) AS 编码,
-            CASE LEFT(t.code, 2)
+            SUBSTR(t.code, 1, 2) AS `编码`,
+            CASE SUBSTR(t.code, 1, 2)
                 WHEN '31' THEN '食品烟酒'
                 WHEN '32' THEN '衣着'
                 WHEN '33' THEN '居住'
@@ -213,14 +354,14 @@ class QueryService:
                 WHEN '37' THEN '医疗保健'
                 WHEN '38' THEN '其他用品及服务'
                 ELSE '其他'
-            END AS 消费类别,
-            COUNT(*) AS 记账笔数,
-            SUM(t.money) AS 总金额,
-            AVG(t.money) AS 平均金额,
-            COUNT(DISTINCT t.hudm) AS 涉及户数
-        FROM 调查点台账合并 t
+            END AS `消费类别`,
+            COUNT(*) AS `记账笔数`,
+            SUM(t.money) AS `总金额`,
+            AVG(t.money) AS `平均金额`,
+            COUNT(DISTINCT t.hudm) AS `涉及户数`
+        FROM `调查点台账合并` t
         {consumption_where}
-        GROUP BY LEFT(t.code, 2)
+        GROUP BY SUBSTR(t.code, 1, 2)
         ORDER BY SUM(t.money) DESC
         """
 
@@ -277,10 +418,11 @@ class QueryService:
 
             # 先获取户名单
             households_sql = f"""
-            SELECT TOP 50 h.户代码, h.户主姓名
-            FROM 调查点户名单 h
+            SELECT h.`户代码`, h.`户主姓名`
+            FROM `调查点户名单` h
             {full_where_clause}
-            ORDER BY h.户代码
+            ORDER BY h.`户代码`
+            LIMIT 50
             """
 
             households_result = self.db.execute_query_safe(households_sql, params or [])
@@ -298,11 +440,11 @@ class QueryService:
                 # 修复：使用CONVERT(VARCHAR(10), t.date, 120)只计算日期部分，避免时间信息干扰
                 stats_sql = """
                 SELECT
-                    COUNT(*) AS 总记账笔数,
-                    COUNT(DISTINCT CONVERT(VARCHAR(10), t.date, 120)) AS 实际记账天数,
-                    MIN(t.date) AS 首次记账日期,
-                    MAX(t.date) AS 最后记账日期
-                FROM 调查点台账合并 t
+                    COUNT(*) AS `总记账笔数`,
+                    COUNT(DISTINCT DATE(t.date)) AS `实际记账天数`,
+                    MIN(t.date) AS `首次记账日期`,
+                    MAX(t.date) AS `最后记账日期`
+                FROM `调查点台账合并` t
                 WHERE t.hudm = ? AND t.year = ? AND t.month = ?
                 """
 
@@ -519,11 +661,11 @@ class QueryService:
 
             # 查询有记录的村代码（使用户代码前12位）
             data_sql = """
-            SELECT DISTINCT LEFT(t.hudm, 12) as village_code
+            SELECT DISTINCT SUBSTR(t.hudm, 1, 12) as village_code
             FROM 调查点台账合并 t
             WHERE t.year = ? AND t.month = ?
                 AND t.hudm IS NOT NULL
-                AND LEN(t.hudm) >= 12
+                AND LENGTH(t.hudm) >= 12
             """
 
             result = self.db.execute_query_safe(data_sql, [year, month])

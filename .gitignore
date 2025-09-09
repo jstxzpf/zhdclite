@@ -183,3 +183,12 @@ CLEANUP_REPORT.md
 AI_REMOVAL_REPORT.md
 ELECTRONIC_LEDGER_REBUILD_REPORT.md
 DOCKER_MULTISTAGE_DEPLOYMENT.md
+
+
+# 数据库文件（避免提交体积过大）
+database.db
+database.db-shm
+database.db-wal
+# 大型数据库备份
+*.db.bak
+*database_backup_*.db

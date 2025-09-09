@@ -301,10 +301,10 @@ class HouseholdAnalysisDAL:
                 household_sql = f"""
                 SELECT DISTINCT 户代码
                 FROM 调查点户名单
-                WHERE LEFT(户代码, 12) IN ({placeholders})
+                WHERE SUBSTR(户代码, 1, 12) IN ({placeholders})
                 ORDER BY 户代码
                 """
-                
+
                 household_result = self.db.execute_query_safe(household_sql, village_codes)
                 return [row[0] for row in household_result] if household_result else []
             
@@ -422,17 +422,17 @@ class HouseholdAnalysisDAL:
 
             sql = f"""
             SELECT
-                LEFT(t.code, 2) AS 编码前缀,
+                SUBSTR(t.code, 1, 2) AS 编码前缀,
                 t.type AS 收支类型,
                 COUNT(*) AS 记账笔数,
                 SUM(t.money) AS 总金额,
                 AVG(t.money) AS 平均金额,
                 MIN(t.money) AS 最小金额,
                 MAX(t.money) AS 最大金额,
-                COUNT(DISTINCT CONCAT(t.year, '-', t.month)) AS 涉及月份数
+                COUNT(DISTINCT (t.year || '-' || t.month)) AS 涉及月份数
             FROM 调查点台账合并 t
             WHERE t.hudm = ? AND t.code IS NOT NULL {time_clause}
-            GROUP BY LEFT(t.code, 2), t.type
+            GROUP BY SUBSTR(t.code, 1, 2), t.type
             ORDER BY t.type, SUM(t.money) DESC
             """
 
@@ -488,7 +488,7 @@ class HouseholdAnalysisDAL:
                 if village_result:
                     village_codes = [row[0] for row in village_result]
                     placeholders = ','.join(['?' for _ in village_codes])
-                    area_conditions.append(f"LEFT(t.hudm, 12) IN ({placeholders})")
+                    area_conditions.append(f"SUBSTR(t.hudm, 1, 12) IN ({placeholders})")
                     params.extend(village_codes)
             elif area_type == 'village' and area_value:
                 # 通过v_town_village_list视图获取村代码
@@ -500,7 +500,7 @@ class HouseholdAnalysisDAL:
                 village_result = self.db.execute_query_safe(village_sql, [area_value])
                 if village_result:
                     village_code = village_result[0][0]
-                    area_conditions.append("LEFT(t.hudm, 12) = ?")
+                    area_conditions.append("SUBSTR(t.hudm, 1, 12) = ?")
                     params.append(village_code)
 
             area_clause = " AND " + " AND ".join(area_conditions) if area_conditions else ""
@@ -508,16 +508,17 @@ class HouseholdAnalysisDAL:
             # 获取金额统计基准（简化版本，移除百分位数计算）
             amount_sql = f"""
             SELECT
-                LEFT(t.code, 2) AS 编码前缀,
+                SUBSTR(t.code, 1, 2) AS 编码前缀,
                 t.type AS 收支类型,
                 COUNT(*) AS 记录数,
                 AVG(t.money) AS 平均金额,
-                STDEV(t.money) AS 标准差,
+                -- SQLite 无 STDEV，临时以0替代或后续在应用层计算
+                0 AS 标准差,
                 MIN(t.money) AS 最小金额,
                 MAX(t.money) AS 最大金额
             FROM 调查点台账合并 t
             WHERE t.code IS NOT NULL AND t.money > 0 {area_clause}
-            GROUP BY LEFT(t.code, 2), t.type
+            GROUP BY SUBSTR(t.code, 1, 2), t.type
             HAVING COUNT(*) >= 10
             """
 
@@ -578,12 +579,12 @@ class HouseholdAnalysisDAL:
             pattern_sql = f"""
             SELECT
                 COUNT(*) AS 总记录数,
-                COUNT(DISTINCT CONCAT(t.year, '-', t.month, '-', t.date)) AS 记账天数,
-                COUNT(CASE WHEN t.money = FLOOR(t.money) THEN 1 END) AS 整数金额数,
-                COUNT(CASE WHEN t.note IS NOT NULL AND LEN(TRIM(t.note)) > 0 THEN 1 END) AS 有备注数,
+                COUNT(DISTINCT (t.year || '-' || t.month || '-' || t.date)) AS 记账天数,
+                COUNT(CASE WHEN t.money = CAST(t.money AS INTEGER) THEN 1 END) AS 整数金额数,
+                COUNT(CASE WHEN t.note IS NOT NULL AND LENGTH(TRIM(t.note)) > 0 THEN 1 END) AS 有备注数,
                 COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END) AS 已编码数,
-                AVG(CAST(DAY(t.date) AS FLOAT)) AS 平均记账日期,
-                COUNT(CASE WHEN DAY(t.date) >= 25 THEN 1 END) AS 月末记账数,
+                AVG(CAST(STRFTIME('%d', t.date) AS FLOAT)) AS 平均记账日期,
+                COUNT(CASE WHEN CAST(STRFTIME('%d', t.date) AS INTEGER) >= 25 THEN 1 END) AS 月末记账数,
                 COUNT(DISTINCT t.type_name) AS 项目名称种类数,
                 MIN(t.date) AS 最早记账日期,
                 MAX(t.date) AS 最晚记账日期

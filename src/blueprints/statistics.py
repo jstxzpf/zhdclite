@@ -38,7 +38,15 @@ def init_blueprint(database, error_handler):
 def handle_statistics_error(e):
     """
     为该蓝图下的所有路由提供统一的错误处理。
+    - 对 HTTPException 原样返回其状态码
+    - 仅对非 HTTPException 返回 500
     """
+    from werkzeug.exceptions import HTTPException
+
+    # 如果是已知的HTTP异常（如404），直接返回原异常（保持状态码）
+    if isinstance(e, HTTPException):
+        return e
+
     # 记录详细的错误日志
     logger.error(f"An error occurred in the statistics blueprint: {e}", exc_info=True)
     # 返回一个标准的JSON错误响应
@@ -61,7 +69,7 @@ def _get_town_village_mapping():
         with _town_code_lock:
             if _town_code_cache is None:
                 logger.info("缓存未命中，正在从v_town_village_list视图加载乡镇村庄映射...")
-                sql = "SELECT 村代码, 所在乡镇街道, 村居名称 FROM v_town_village_list WHERE 所在乡镇街道 IS NOT NULL AND 村居名称 IS NOT NULL"
+                sql = "SELECT `村代码`, `所在乡镇街道`, `村居名称` FROM `v_town_village_list` WHERE `所在乡镇街道` IS NOT NULL AND `村居名称` IS NOT NULL"
                 result = db.execute_query_safe(sql)
 
                 town_to_villages = {}
@@ -113,13 +121,13 @@ def get_overview_statistics():
     
     sql = f"""
     SELECT
-        COUNT(*), COUNT(DISTINCT t.hudm), COUNT(DISTINCT CONCAT(t.year, '-', t.month)),
+        COUNT(*), COUNT(DISTINCT t.hudm), COUNT(DISTINCT (t.year || '-' || t.month)),
         SUM(CASE WHEN t.money > 0 THEN t.money ELSE 0 END),
         SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END),
         SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END),
         COUNT(CASE WHEN t.code IS NULL THEN 1 END),
         COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END)
-    FROM 调查点台账合并 t
+    FROM `调查点台账合并` t
     {where_clause}
     """
     
@@ -150,18 +158,12 @@ def get_household_statistics():
 @validate_year_month_params
 @handle_api_exception
 def get_town_statistics():
-    """获取分乡镇统计数据（使用 v_town_village_list 作为唯一权威数据源）"""
-    # 先构建除乡镇外的通用筛选（year/month/household 等基于 t 表的条件）
+    """获取分乡镇统计数据（优化版本，避免N+1查询）"""
+    # 构建筛选条件（排除乡镇筛选，因为在查询中处理）
     base_where_clause, base_params = _build_query_filters(exclude_town=True)
 
-    # 通过视图获取全部乡镇名称
-    towns = query_service.get_all_towns()
-    town_stats = []
-    for town_name in towns:
-        town_stat = query_service.get_town_statistics_for_town_name(town_name, base_where_clause, base_params)
-        if town_stat:
-            town_stat['乡镇名称'] = town_name
-            town_stats.append(town_stat)
+    # 使用优化后的一次性查询获取所有乡镇统计数据
+    town_stats = query_service.get_all_town_statistics(base_where_clause, base_params)
 
     return ResponseHelper.success_response(town_stats)
 
@@ -176,15 +178,15 @@ def get_month_statistics():
     SELECT
         t.year,
         t.month,
-        COUNT(*) AS 记账笔数,
-        COUNT(DISTINCT t.hudm) AS 户数,
-        COUNT(CASE WHEN t.type = 1 THEN 1 END) AS 收入笔数,
-        COUNT(CASE WHEN t.type = 2 THEN 1 END) AS 支出笔数,
-        SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END) AS 收入总额,
-        SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END) AS 支出总额,
-        COUNT(CASE WHEN t.code IS NULL THEN 1 END) AS 未编码笔数,
-        COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END) AS 已编码笔数
-    FROM 调查点台账合并 t
+        COUNT(*) AS `记账笔数`,
+        COUNT(DISTINCT t.hudm) AS `户数`,
+        COUNT(CASE WHEN t.type = 1 THEN 1 END) AS `收入笔数`,
+        COUNT(CASE WHEN t.type = 2 THEN 1 END) AS `支出笔数`,
+        SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END) AS `收入总额`,
+        SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END) AS `支出总额`,
+        COUNT(CASE WHEN t.code IS NULL THEN 1 END) AS `未编码笔数`,
+        COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END) AS `已编码笔数`
+    FROM `调查点台账合并` t
     {where_clause}
     GROUP BY t.year, t.month
     ORDER BY t.year, t.month
@@ -242,7 +244,7 @@ def _build_household_filters_for_missing() -> (str, list):
             # 村级筛选
             village_code = params_dict.get('village')
             if village_code:
-                conditions.append("LEFT(h.户代码, 12) = ?")
+                conditions.append("SUBSTR(h.`户代码`, 1, 12) = ?")
                 params.append(village_code)
             else:
                 # 乡镇 -> 多村代码
@@ -251,7 +253,7 @@ def _build_household_filters_for_missing() -> (str, list):
                     village_codes = mapping['town_to_villages'][town]
                     if village_codes:
                         placeholders = ','.join(['?' for _ in village_codes])
-                        conditions.append(f"LEFT(h.户代码, 12) IN ({placeholders})")
+                        conditions.append(f"SUBSTR(h.`户代码`, 1, 12) IN ({placeholders})")
                         params.extend(village_codes)
 
         where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
@@ -318,10 +320,10 @@ def get_available_filters():
     village_filter = request.args.get('village')
     
     # 获取年份和月份选项
-    year_result = db.execute_query_safe("SELECT DISTINCT year FROM 调查点台账合并 WHERE year IS NOT NULL ORDER BY year")
+    year_result = db.execute_query_safe("SELECT DISTINCT year FROM `调查点台账合并` WHERE year IS NOT NULL ORDER BY year")
     years = sorted([str(row[0]) for row in year_result if row[0] and str(row[0]).isdigit() and 2020 <= int(row[0]) <= 2030])
 
-    month_result = db.execute_query_safe("SELECT DISTINCT month FROM 调查点台账合并 WHERE month IS NOT NULL ORDER BY month")
+    month_result = db.execute_query_safe("SELECT DISTINCT month FROM `调查点台账合并` WHERE month IS NOT NULL ORDER BY month")
     months = sorted([str(row[0]).zfill(2) for row in month_result if row[0] and str(row[0]).isdigit() and 1 <= int(row[0]) <= 12])
 
     mapping = _get_town_village_mapping()
@@ -342,10 +344,10 @@ def get_available_filters():
         # village_filter现在是村代码，直接使用LEFT(t.hudm, 12)匹配
         household_result = db.execute_query_safe(
             """
-            SELECT DISTINCT t.hudm, h.户主姓名
-            FROM 调查点台账合并 t
-            LEFT JOIN 调查点户名单 h ON t.hudm = h.户代码
-            WHERE LEFT(t.hudm, 12) = ?
+            SELECT DISTINCT t.hudm, h.`户主姓名`
+            FROM `调查点台账合并` t
+            LEFT JOIN `调查点户名单` h ON t.hudm = h.`户代码`
+            WHERE SUBSTR(t.hudm, 1, 12) = ?
             ORDER BY t.hudm
             """, [village_filter]
         )
@@ -356,10 +358,10 @@ def get_available_filters():
             placeholders = ','.join(['?' for _ in village_codes])
             household_result = db.execute_query_safe(
                 f"""
-                SELECT DISTINCT t.hudm, h.户主姓名
-                FROM 调查点台账合并 t
-                LEFT JOIN 调查点户名单 h ON t.hudm = h.户代码
-                WHERE LEFT(t.hudm, 12) IN ({placeholders})
+                SELECT DISTINCT t.hudm, h.`户主姓名`
+                FROM `调查点台账合并` t
+                LEFT JOIN `调查点户名单` h ON t.hudm = h.`户代码`
+                WHERE SUBSTR(t.hudm, 1, 12) IN ({placeholders})
                 ORDER BY t.hudm
                 """, village_codes
             )
@@ -367,7 +369,7 @@ def get_available_filters():
             household_result = []
     else:
         household_result = db.execute_query_safe(
-            "SELECT DISTINCT t.hudm, h.户主姓名 FROM 调查点台账合并 t LEFT JOIN 调查点户名单 h ON t.hudm = h.户代码 ORDER BY t.hudm"
+            "SELECT DISTINCT t.hudm, h.`户主姓名` FROM `调查点台账合并` t LEFT JOIN `调查点户名单` h ON t.hudm = h.`户代码` ORDER BY t.hudm"
         )
     
     households = [{'code': row[0], 'name': row[1]} for row in household_result if row[0] and row[1]]
@@ -398,3 +400,13 @@ def get_villages():
     
     villages = query_service.get_villages_by_town(town_name)
     return ResponseHelper.success_response(villages)
+
+@statistics_bp.route('/api/statistics/refresh_cache', methods=['POST'])
+@handle_api_exception
+def refresh_statistics_cache():
+    """刷新统计缓存"""
+    success = query_service.refresh_statistics_cache()
+    if success:
+        return ResponseHelper.success_response({'message': '缓存刷新成功'})
+    else:
+        return ResponseHelper.error_response('缓存刷新失败')

@@ -1,8 +1,7 @@
 """
-数据库连接池模块
+SQLite数据库连接池模块
 """
-import pyodbc
-import json
+import sqlite3
 import os
 import logging
 import time
@@ -15,7 +14,7 @@ _pool = None
 _pool_lock = threading.Lock()
 
 class ConnectionPool:
-    def __init__(self, config_path, pool_name="Internal", max_connections=10, timeout=30):
+    def __init__(self, db_path="database.db", pool_name="Internal", max_connections=10, timeout=30):
         self.logger = logging.getLogger(f"{__name__}.{pool_name}")
         self.max_connections = max_connections
         self.timeout = timeout
@@ -24,163 +23,169 @@ class ConnectionPool:
         self._lock = threading.Lock()
         self._connections_in_use = 0
         self._total_connections = 0
-        self.config = self._load_config(config_path)
+        self.db_path = os.path.abspath(db_path)
         self._initialize_pool()
 
-    def _load_config(self, config_path):
-        """加载数据库配置"""
-        # 优先使用环境变量
-        if os.getenv('DATABASE_HOST') and self.pool_name == "Internal":
-            return {
-                'driver': os.getenv('DB_DRIVER', 'ODBC Driver 18 for SQL Server'),
-                'server': os.getenv('DATABASE_HOST'),
-                'database': os.getenv('DATABASE_NAME'),
-                'uid': os.getenv('DATABASE_USER', 'sa'),
-                'pwd': os.getenv('DATABASE_PASSWORD', ''),
-                'encrypt': os.getenv('DB_ENCRYPT', 'yes'),
-                'trustServerCertificate': os.getenv('DB_TRUST_CERT', 'yes')
-            }
-        # 否则，从文件加载
-        full_config_path = os.path.join(os.getcwd(), config_path)
-        if not os.path.exists(full_config_path):
-            raise FileNotFoundError(f"配置文件未找到: {full_config_path}")
-        with open(full_config_path, 'r') as f:
-            return json.load(f)
-
     def _create_connection(self):
-        """创建一个新的数据库连接"""
-        conn_str = ';'.join([
-            f"DRIVER={self.config['driver']}",
-            f"SERVER={self.config['server']}",
-            f"DATABASE={self.config['database']}",
-            f"ENCRYPT={self.config.get('encrypt', 'yes')}",
-            f"TrustServerCertificate={self.config.get('trustServerCertificate', 'yes')}",
-            f"UID={self.config['uid']}",
-            f"PWD={self.config['pwd']}",
-            "Connection Timeout=60",
-            "Command Timeout=600"
-        ])
+        """创建新的SQLite数据库连接"""
         try:
-            conn = pyodbc.connect(conn_str, timeout=60)
-            conn.timeout = 600
-            self.logger.info(f"({self.pool_name}) 创建了一个新的数据库连接")
-            return conn
-        except pyodbc.Error as e:
-            self.logger.error(f"({self.pool_name}) 创建连接失败: {e}")
+            # 确保数据库文件存在
+            if not os.path.exists(self.db_path):
+                raise FileNotFoundError(f"SQLite数据库文件未找到: {self.db_path}")
+            
+            # 创建SQLite连接
+            connection = sqlite3.connect(
+                self.db_path,
+                timeout=self.timeout,
+                check_same_thread=False  # 允许多线程使用
+            )
+            
+            # 设置SQLite连接参数
+            connection.execute("PRAGMA foreign_keys = ON")  # 启用外键约束
+            connection.execute("PRAGMA journal_mode = WAL")  # 使用WAL模式提高并发性能
+            connection.execute("PRAGMA synchronous = NORMAL")  # 平衡性能和安全性
+            connection.execute("PRAGMA cache_size = 10000")  # 增加缓存大小
+            connection.execute("PRAGMA temp_store = MEMORY")  # 临时表存储在内存中
+            
+            # 设置行工厂，使结果可以通过列名访问
+            connection.row_factory = sqlite3.Row
+            
+            self.logger.debug(f"[{self.pool_name}] 创建SQLite连接成功: {self.db_path}")
+            return connection
+        except Exception as e:
+            self.logger.error(f"[{self.pool_name}] 创建SQLite连接失败: {e}")
             raise
 
     def _initialize_pool(self):
         """初始化连接池"""
-        for _ in range(self.max_connections // 2): # 启动时先创建一半的连接
-            try:
+        try:
+            for _ in range(self.max_connections):
                 conn = self._create_connection()
                 self._pool.put(conn)
                 self._total_connections += 1
-            except Exception as e:
-                self.logger.warning(f"({self.pool_name}) 初始化连接池时创建连接失败: {e}")
+            self.logger.info(f"[{self.pool_name}] 连接池初始化完成，创建了 {self.max_connections} 个连接")
+        except Exception as e:
+            self.logger.error(f"[{self.pool_name}] 连接池初始化失败: {e}")
+            raise
 
     def get_connection(self):
-        """从池中获取一个连接"""
-        with self._lock:
-            if self._connections_in_use >= self.max_connections:
-                self.logger.warning(f"({self.pool_name}) 连接池已满，等待释放...")
-                raise TimeoutError("获取数据库连接超时")
-
+        """从连接池获取一个连接"""
         try:
-            # 尝试从队列中获取连接
-            conn = self._pool.get(timeout=self.timeout)
-            # 检查连接是否仍然有效
-            if not self._is_connection_valid(conn):
-                self.logger.warning(f"({self.pool_name}) 检测到无效连接，正在重新创建...")
-                self._total_connections -= 1
-                conn = self._create_connection()
-                self._total_connections += 1
-        except Empty:
-            # 如果队列为空，并且我们还没有达到最大连接数，就创建一个新的连接
             with self._lock:
-                if self._total_connections < self.max_connections:
-                    try:
-                        conn = self._create_connection()
-                        self._total_connections += 1
-                    except Exception as e:
-                        raise ConnectionError(f"({self.pool_name}) 无法创建新连接: {e}")
-                else:
-                    # 如果已经达到最大连接数，则等待
-                    self.logger.warning(f"({self.pool_name}) 连接池已空且达到最大连接数，等待释放...")
-                    try:
-                        conn = self._pool.get(timeout=self.timeout)
-                    except Empty:
-                        raise TimeoutError("获取数据库连接超时")
-
-        with self._lock:
-            self._connections_in_use += 1
-        self.logger.debug(f"({self.pool_name}) 获取连接。当前使用中: {self._connections_in_use}/{self._total_connections}")
-        return conn
-
-    def release_connection(self, conn):
-        """将连接释放回池中"""
-        if conn:
+                self._connections_in_use += 1
+            
+            conn = self._pool.get(timeout=self.timeout)
+            
+            # 测试连接是否有效
             try:
-                # 检查连接是否有效，无效则不放回
-                if not self._is_connection_valid(conn):
-                    self.logger.warning(f"({self.pool_name}) 释放了一个无效的连接，将其丢弃。")
-                    with self._lock:
-                        self._total_connections -= 1
-                    return
-                # 将连接放回队列
-                self._pool.put(conn, block=False)
-            except Full:
-                # 如果池已满，则关闭此连接
-                self.logger.warning(f"({self.pool_name}) 连接池已满，关闭多余的连接。")
+                conn.execute("SELECT 1").fetchone()
+            except sqlite3.Error:
+                # 连接无效，创建新连接
+                self.logger.warning(f"[{self.pool_name}] 检测到无效连接，正在重新创建")
                 conn.close()
-                with self._lock:
-                    self._total_connections -= 1
-            finally:
-                with self._lock:
-                    self._connections_in_use -= 1
-                self.logger.debug(f"({self.pool_name}) 释放连接。当前使用中: {self._connections_in_use}/{self._total_connections}")
+                conn = self._create_connection()
+            
+            return conn
+        except Empty:
+            self.logger.error(f"[{self.pool_name}] 获取连接超时")
+            raise Exception("获取数据库连接超时")
+        except Exception as e:
+            with self._lock:
+                self._connections_in_use -= 1
+            self.logger.error(f"[{self.pool_name}] 获取连接失败: {e}")
+            raise
 
-    def _is_connection_valid(self, conn):
-        """检查连接是否仍然有效"""
+    def return_connection(self, conn):
+        """将连接返回到连接池"""
         try:
-            if conn.closed:
-                return False
-            conn.execute("SELECT 1")
-            return True
-        except pyodbc.Error:
-            return False
+            if conn:
+                # 回滚任何未提交的事务
+                try:
+                    conn.rollback()
+                except sqlite3.Error:
+                    pass
+                
+                self._pool.put(conn, timeout=1)
+            
+            with self._lock:
+                self._connections_in_use -= 1
+        except Full:
+            # 连接池已满，关闭连接
+            conn.close()
+            with self._lock:
+                self._total_connections -= 1
+        except Exception as e:
+            self.logger.error(f"[{self.pool_name}] 返回连接失败: {e}")
+            if conn:
+                conn.close()
+            with self._lock:
+                self._connections_in_use -= 1
 
     @contextmanager
     def get_cursor(self):
-        """获取游标的上下文管理器，自动处理连接的获取和释放"""
+        """上下文管理器，自动管理连接和游标"""
         conn = None
         cursor = None
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             yield cursor
-            conn.commit() # 默认提交事务
+            conn.commit()  # 自动提交事务
         except Exception as e:
-            self.logger.error(f"({self.pool_name}) 数据库操作出错: {e}")
             if conn:
-                try:
-                    conn.rollback()
-                    self.logger.info(f"({self.pool_name}) 事务已回滚。")
-                except pyodbc.Error as rb_e:
-                    self.logger.error(f"({self.pool_name}) 回滚失败: {rb_e}")
+                conn.rollback()  # 回滚事务
+            self.logger.error(f"[{self.pool_name}] 数据库操作失败: {e}")
             raise
         finally:
             if cursor:
                 cursor.close()
             if conn:
-                self.release_connection(conn)
+                self.return_connection(conn)
+
+    def close_all(self):
+        """关闭所有连接"""
+        self.logger.info(f"[{self.pool_name}] 正在关闭所有数据库连接...")
+        while not self._pool.empty():
+            try:
+                conn = self._pool.get_nowait()
+                conn.close()
+            except Empty:
+                break
+            except Exception as e:
+                self.logger.error(f"[{self.pool_name}] 关闭连接时出错: {e}")
+        
+        with self._lock:
+            self._total_connections = 0
+            self._connections_in_use = 0
+        
+        self.logger.info(f"[{self.pool_name}] 所有连接已关闭")
+
+    def get_stats(self):
+        """获取连接池统计信息"""
+        with self._lock:
+            return {
+                'total_connections': self._total_connections,
+                'connections_in_use': self._connections_in_use,
+                'available_connections': self._pool.qsize(),
+                'max_connections': self.max_connections
+            }
 
 def get_connection_pool():
-    """获取内部数据库连接池的单例"""
+    """获取全局连接池实例"""
     global _pool
     if _pool is None:
         with _pool_lock:
             if _pool is None:
-                _pool = ConnectionPool('config/mssql.json', pool_name="Internal")
+                # 使用项目根目录下的database.db文件
+                db_path = os.path.join(os.getcwd(), 'database.db')
+                _pool = ConnectionPool(db_path=db_path, pool_name="SQLite")
     return _pool
 
+def close_connection_pool():
+    """关闭全局连接池"""
+    global _pool
+    if _pool is not None:
+        with _pool_lock:
+            if _pool is not None:
+                _pool.close_all()
+                _pool = None

@@ -109,22 +109,6 @@
                             <label for="town">乡镇：</label>
                             <select name="town" id="town" required>
                                 <option value="全部乡镇">全部乡镇</option>
-                                <option value="分界镇">分界镇</option>
-                                <option value="滨江镇">滨江镇</option>
-                                <option value="黄桥镇">黄桥镇</option>
-                                <option value="延令济川街道">延令济川街道</option>
-                                <option value="古溪镇">古溪镇</option>
-                                <option value="元竹镇">元竹镇</option>
-                                <option value="珊瑚镇">珊瑚镇</option>
-                                <option value="曲霞镇">曲霞镇</option>
-                                <option value="广陵镇">广陵镇</option>
-                                <option value="张桥镇">张桥镇</option>
-                                <option value="河失镇">河失镇</option>
-                                <option value="新街镇">新街镇</option>
-                                <option value="姚王街道">姚王街道</option>
-                                <option value="宣堡镇">宣堡镇</option>
-                                <option value="虹桥镇">虹桥镇</option>
-                                <option value="根思乡">根思乡</option>
                             </select>
                         </div>
                     </div>
@@ -293,6 +277,8 @@
             try {
                 console.log('1. 初始化页面...');
                 initializePage();
+                // 动态加载乡镇列表（从 /api/towns 获取，基于“调查点村名单”）
+                populateTowns();
 
                 console.log('2. 设置表单处理器...');
                 setupFormHandlers();
@@ -339,6 +325,32 @@
                 select.value = currentMonth;
             });
         }
+        // 从接口填充乡镇下拉框（全局定义，供初始化调用）
+        async function populateTowns() {
+            const townSelect = document.getElementById('town');
+            if (!townSelect) return;
+            // 保留“全部乡镇”选项
+            const keepFirst = townSelect.querySelector('option[value="全部乡镇"]');
+            townSelect.innerHTML = '';
+            if (keepFirst) townSelect.appendChild(keepFirst);
+            try {
+                const resp = await fetch('/api/towns');
+                const json = await resp.json();
+                if (json && json.success && Array.isArray(json.data)) {
+                    json.data.forEach(town => {
+                        if (town && typeof town === 'string') {
+                            const opt = document.createElement('option');
+                            opt.value = town;
+                            opt.textContent = town;
+                            townSelect.appendChild(opt);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('加载乡镇列表失败:', e);
+            }
+        }
+
 
         // 设置导航功能
         function setupNavigation() {
@@ -361,6 +373,9 @@
                     navItems.forEach(nav => nav.classList.remove('active'));
                     this.classList.add('active');
 
+            // 从接口填充乡镇下拉框（移动到全局，避免作用域问题）
+            // 这里保留一个空函数占位，防止未来重复定义
+            function populateTowns() {}
                     // 显示对应的模块
                     sections.forEach(section => {
                         section.classList.remove('active');
@@ -659,7 +674,16 @@
                     if (response.ok) {
                         return response.blob().then(blob => {
                             const fileName = getFileNameFromResponse(response, form.action);
-                            downloadBlob(blob, fileName);
+                            // 内联下载逻辑，避免依赖外部函数未定义
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.style.display = 'none';
+                            a.href = url;
+                            a.download = fileName;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            document.body.removeChild(a);
                             showMessage('电子台账生成成功！', 'success');
                         });
                     } else {
@@ -740,10 +764,28 @@
 
         // 获取默认文件名
         function getDefaultFileName(action) {
-
-            if (action.includes('ledger')) return '电子台账.xlsx';
+            if (action && action.includes('ledger')) return '电子台账.xlsx';
             return 'download.xlsx';
         }
+
+        // 下载Blob文件的通用方法
+        function downloadBlob(blob, fileName) {
+            try {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = fileName || 'download.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (e) {
+                console.error('下载文件失败:', e);
+                showMessage('文件下载失败：' + (e && e.message ? e.message : e), 'error');
+            }
+        }
+
         // 获取与 input 关联的 label（优先 for=，回退 nextElementSibling）
         function getAssociatedLabel(input) {
             if (!input) return null;

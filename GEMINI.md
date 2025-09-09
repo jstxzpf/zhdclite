@@ -1,75 +1,59 @@
-# GEMINI.md - Project Overview
-
-This document provides a comprehensive overview of the `zhdcsqlite` project, intended as a guide for AI-powered development assistance.
+# GEMINI.md
 
 ## Project Overview
 
-`zhdcsqlite` is a web application built with **Flask**, a Python web framework. Its primary purpose is to process, analyze, and manage household financial data. The application facilitates the import of financial records from various sources (Excel and CSV files), supports the manual coding of uncoded data entries, and generates detailed financial reports and electronic ledgers.
+This project is a Flask-based web application for analyzing household financial data. It provides a RESTful API to generate analysis reports on household income and expenditure. The application uses a SQL Server database as its data source and can generate reports for individual households or for entire areas (towns or villages).
 
-The backend is written in Python and relies on a Microsoft SQL Server database for data storage and querying. The frontend is composed of HTML templates, CSS, and JavaScript.
-
-### Key Technologies
-
-*   **Backend:** Python, Flask
-*   **Database:** Microsoft SQL Server (via `pyodbc`)
-*   **Data Manipulation:** pandas, numpy
-*   **Frontend:** HTML, CSS, JavaScript
-*   **Dependencies:** See `requirements.txt` for a complete list.
-
-### Architecture
-
-The application follows a modular structure, with core functionalities organized into Flask Blueprints. The main components are:
-
-*   **`app.py`:** The main entry point of the application. It initializes the Flask app, database connection, and registers the blueprints.
-*   **`src/`:** Contains the core application logic.
-    *   **`src/blueprints/`:**  Houses the different modules of the application, such as data import, data generation, and statistical analysis.
-    *   **`src/database.py`:** Manages the database connection and data access operations.
-    *   **`src/data_processing.py`:**  Handles the business logic for processing financial data.
-    *   **`src/excel_operations.py`:** Provides utility functions for reading and writing Excel files.
-*   **`static/`:** Contains frontend assets like CSS and JavaScript files.
-*   **`src/templates/`:**  Contains the HTML templates for the web interface.
-*   **`uploads/`:**  A directory for storing uploaded and generated files.
+The core functionality of the application is to:
+-   Connect to a SQL Server database to retrieve household financial data.
+-   Provide API endpoints for analyzing household data.
+-   Generate detailed analysis reports, including consumption profiles, anomaly detection, and data quality assessment.
+-   The application is structured using Flask Blueprints to separate different functionalities.
 
 ## Building and Running
 
 ### Prerequisites
 
-*   Python 3.10+
-*   Microsoft SQL Server ODBC Driver
+-   Python 3.10+
+-   SQL Server ODBC Driver
 
-### Setup and Installation
+### Installation
 
 1.  **Create and activate a virtual environment:**
+
     ```bash
     python -m venv .venv
-    source .venv/bin/activate  # On Windows, use: .venv\Scripts\activate
+    source .venv/bin/activate
     ```
 
-2.  **Install dependencies:**
+2.  **Install the required dependencies:**
+
     ```bash
     pip install -r requirements.txt
     ```
 
-3.  **Configure the database:**
-    *   Copy the example configuration file:
-        ```bash
-        cp config/mssql.json.example config/mssql.json
-        ```
-    *   Edit `config/mssql.json` with your SQL Server connection details.
+### Configuration
+
+1.  **Copy the example configuration file:**
+
+    ```bash
+    cp config/mssql.json.example config/mssql.json
+    ```
+
+2.  **Edit `config/mssql.json` with your database credentials.**
 
 ### Running the Application
 
-1.  **Start the Flask development server:**
-    ```bash
-    python app.py
-    ```
+```bash
+python app.py
+```
 
-2.  The application will be available at `http://localhost:5000`.
+The application will be available at `http://localhost:8888`.
 
 ## Development Conventions
 
-*   **Modular Design:** The application is organized into Blueprints, promoting separation of concerns. New features should be implemented in their own blueprints.
-*   **Error Handling:** The `@handle_errors` decorator is used to provide consistent error handling for API endpoints.
-*   **Database Interaction:** All database operations are centralized in the `src/database.py` module.
-*   **Logging:** The application uses the standard Python `logging` module to log events to `app.log` and the console.
-*   **Dependencies:** Project dependencies are managed in the `requirements.txt` file.
+-   **Project Structure:** The project follows a standard Flask application structure, with the main application logic in `app.py` and blueprints in the `src/blueprints` directory. The core business logic is separated into different modules within the `src` directory, such as `analysis_report_generator.py`, `consumption_profile_engine.py`, `anomaly_detection_engine.py`, and `recording_quality_engine.py`.
+-   **Database Interaction:** The application uses a Data Access Layer (DAL) pattern to interact with the database. The DAL is implemented in `src/household_analysis_dal.py` and uses the `pyodbc` library to connect to the SQL Server database.
+-   **API Design:** The application provides a RESTful API for accessing the analysis functionality. The API endpoints are defined in the blueprints and use JSON for request and response formats.
+-   **Testing:** The project includes `pytest` in its dependencies, which suggests that there are tests written for the application. However, the tests are not included in the provided file list.
+-   **Logging:** The application uses the `logging` module to log important events and errors. Logs are written to `app.log`.

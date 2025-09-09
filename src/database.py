@@ -1,13 +1,14 @@
-import pyodbc
+import sqlite3
 import pandas as pd
 import logging
+import os
 import gc
 from .database_pool import get_connection_pool
 
 class Database:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        # 初始化连接池
+        # 初始化SQLite连接池
         self.pool = get_connection_pool()
 
     def execute_query(self, query, params=None):
@@ -19,7 +20,7 @@ class Database:
             params (tuple, optional): 查询参数. Defaults to None.
 
         Returns:
-            pyodbc.Cursor: 执行查询后的游标对象。
+            sqlite3.Cursor: 执行查询后的游标对象。
         """
         try:
             # get_cursor() 是一个上下文管理器，会自动处理连接的获取和释放
