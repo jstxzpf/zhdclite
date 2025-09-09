@@ -1,15 +1,17 @@
 """
 数据导入模块蓝图
 包含已编码数据、地方点数据、国家点数据的导入功能
+以及调查点户名单的导入导出功能
 """
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_file, jsonify
 from werkzeug.utils import secure_filename
 import os
 import logging
 import uuid
 import pandas as pd
 import re
+from datetime import datetime
 
 # 创建蓝图
 data_import_bp = Blueprint('data_import', __name__)
@@ -205,7 +207,7 @@ def _get_next_id_range(data_source, record_count):
         raise ValueError(f"不支持的数据源类型: {data_source}")
     range_start, range_end = id_ranges[data_source]
     max_id_result = db.execute_query_safe(
-        "SELECT ISNULL(MAX(id), ?) FROM 调查点台账合并 WHERE id BETWEEN ? AND ?",
+        "SELECT COALESCE(MAX(id), ?) FROM 调查点台账合并 WHERE id BETWEEN ? AND ?",
         (range_start - 1, range_start, range_end)
     )
     max_existing_id = max_id_result[0][0] if max_id_result and max_id_result[0] is not None else range_start - 1
@@ -256,7 +258,7 @@ def import_national_data():
             valid_record_result = db.execute_query_safe("""
                 SELECT COUNT(*) FROM 国家点待导入
                 WHERE ([SID] IS NOT NULL AND [SID] <> '')
-                    AND (TRY_CONVERT(DATETIME, [创建时间], 120) IS NOT NULL)
+                    AND ([创建时间] IS NOT NULL AND TRIM([创建时间]) <> '')
                     AND ([编码] IS NOT NULL AND [编码] <> '')
                     AND ([品名] IS NOT NULL AND [品名] <> '')
                     AND (([人码] IS NOT NULL AND [人码] <> '') OR ([人代码] IS NOT NULL AND [人代码] <> ''))
@@ -273,62 +275,120 @@ def import_national_data():
                 national_id_start, _ = _get_next_id_range('national', valid_record_count)
                 logger.info(f"国家点数据分配ID范围起始: {national_id_start}")
 
-                # 插入数据到调查点台账合并表
-                logger.info("开始插入国家点数据到主表")
-                insert_sql = f'''
-                INSERT INTO [调查点台账合并] (
-                    hudm, code, amount, money, note, person, year, month, z_guid, date,
-                    type, id, type_name, unit_name, ybm, ybz, wton, ntow
-                )
-                SELECT
-                    LEFT([SID], 12) + LEFT(RIGHT([SID], 5), 3) AS hudm,
-                    CAST([编码] AS VARCHAR(50)) AS code,
-                    [数量] AS amount,
-                    [金额] AS money,
-                    CAST(ISNULL([记账说明], '') AS VARCHAR(255)) AS note,
-                    CAST(ISNULL([人码], ISNULL([人代码], '')) AS VARCHAR(255)) AS person,
-                    CAST(ISNULL([年], YEAR(TRY_CONVERT(DATETIME, [创建时间], 120))) AS VARCHAR(4)) AS year,
-                    RIGHT('0' + CAST(ISNULL([月], MONTH(TRY_CONVERT(DATETIME, [创建时间], 120))) AS VARCHAR(2)), 2) AS month,
-                    NEWID() AS z_guid,
-                    TRY_CONVERT(SMALLDATETIME, [创建时间], 120) AS date,
-                    0 AS type,
-                    {national_id_start} + ROW_NUMBER() OVER (ORDER BY [SID]) - 1 AS id,
-                    CAST([品名] AS VARCHAR(255)) AS type_name,
-                    CAST('' AS VARCHAR(255)) AS unit_name,
-                    CAST('' AS VARCHAR(1)) AS ybm,
-                    CAST('1' AS VARCHAR(1)) AS ybz,
-                    CAST('1' AS VARCHAR(1)) AS wton,
-                    CAST('0' AS VARCHAR(1)) AS ntow
-                FROM 国家点待导入
-                WHERE
-                    ([SID] IS NOT NULL AND [SID] <> '') AND
-                    (TRY_CONVERT(DATETIME, [创建时间], 120) IS NOT NULL) AND
-                    ([编码] IS NOT NULL AND [编码] <> '') AND
-                    ([品名] IS NOT NULL AND [品名] <> '') AND
-                    (([人码] IS NOT NULL AND [人码] <> '') OR ([人代码] IS NOT NULL AND [人代码] <> ''))
-                '''
+                # 插入数据到调查点台账合并表（改为：从临时表 SELECT 到 DataFrame，在 Python 端预处理并 executemany 插入）
+                logger.info("开始插入国家点数据到主表（Python 端预处理）")
 
-                # 使用事务方式执行所有SQL操作
-                with db.pool.get_cursor() as cursor:
-                    cursor.execute(insert_sql)
-                    inserted_count = cursor.rowcount
-                    logger.info(f"国家点数据成功合并到主表，共插入 {inserted_count} 条记录")
+                # 1) 从临时表读取有效记录
+                select_sql = """
+                SELECT [SID], [编码], [数量], [金额], [记账说明], [人码], [人代码], [年], [月], [创建时间], [品名]
+                FROM 国家点待导入
+                WHERE ([SID] IS NOT NULL AND TRIM([SID]) <> '')
+                  AND ([创建时间] IS NOT NULL AND TRIM([创建时间]) <> '')
+                  AND ([编码] IS NOT NULL AND TRIM([编码]) <> '')
+                  AND ([品名] IS NOT NULL AND TRIM([品名]) <> '')
+                  AND (([人码] IS NOT NULL AND TRIM([人码]) <> '') OR ([人代码] IS NOT NULL AND TRIM([人代码]) <> ''))
+                """
+                rows = db.execute_query_safe(select_sql)
+
+                if not rows:
+                    logger.info("没有符合条件的记录可插入主表。")
+                    inserted_count = 0
+                else:
+                    # 2) 转为 DataFrame 并进行字段预处理
+                    records = [dict(r) for r in rows]
+                    df_temp = pd.DataFrame.from_records(records)
+
+                    # 统一字符串类型并填充缺失
+                    for col in ['SID','编码','数量','金额','记账说明','人码','人代码','年','月','创建时间','品名']:
+                        if col not in df_temp.columns:
+                            df_temp[col] = ''
+                        df_temp[col] = df_temp[col].astype(str).fillna('').str.strip()
+
+                    # 生成 hudm: 前12位 + (末5位的前3位)
+                    def build_hudm(sid: str) -> str:
+                        if not sid:
+                            return ''
+                        head12 = sid[:12]
+                        tail5_first3 = sid[-5:][:3] if len(sid) >= 5 else ''
+                        return head12 + tail5_first3
+
+                    df_temp['hudm'] = df_temp['SID'].apply(build_hudm)
+
+                    # 选择 person 字段：人码 或 人代码
+                    df_temp['person'] = df_temp.apply(lambda r: r['人码'] if r['人码'] else (r['人代码'] if r['人代码'] else ''), axis=1)
+
+                    # 解析年份与月份（优先使用 年/月，否则从 创建时间 推断）
+                    ts = pd.to_datetime(df_temp['创建时间'], errors='coerce')
+                    df_temp['year'] = df_temp.apply(
+                        lambda r: r['年'] if r['年'] else (str(ts[r.name].year) if pd.notna(ts[r.name]) else ''), axis=1
+                    )
+                    df_temp['month'] = df_temp.apply(
+                        lambda r: r['月'] if r['月'] else (str(ts[r.name].month).zfill(2) if pd.notna(ts[r.name]) else ''), axis=1
+                    )
+
+                    # 生成 z_guid、type、id、固定值列
+                    import uuid as _uuid
+                    df_temp['z_guid'] = [ _uuid.uuid4().hex for _ in range(len(df_temp)) ]
+                    df_temp['type'] = 0
+                    df_temp['id'] = list(range(national_id_start, national_id_start + len(df_temp)))
+                    df_temp['type_name'] = df_temp['品名']
+                    df_temp['unit_name'] = ''
+                    df_temp['ybm'] = ''
+                    df_temp['ybz'] = '1'
+                    df_temp['wton'] = '1'
+                    df_temp['ntow'] = '0'
+
+                    # 构建插入所需列顺序
+                    insert_columns = [
+                        'hudm','编码','数量','金额','记账说明','person','year','month','z_guid','创建时间',
+                        'type','id','type_name','unit_name','ybm','ybz','wton','ntow'
+                    ]
+                    # 将金额/数量保持原值（如需数值化可在此转换）
+
+                    # 3) executemany 插入
+                    insert_sql = (
+                        "INSERT INTO 调查点台账合并 ("
+                        "hudm, code, amount, money, note, person, year, month, z_guid, date, "
+                        "type, id, type_name, unit_name, ybm, ybz, wton, ntow"
+                        ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                    )
+
+                    values = [
+                        (
+                            r['hudm'], r['编码'], r['数量'], r['金额'], r['记账说明'], r['person'], r['year'], r['month'],
+                            r['z_guid'], r['创建时间'], r['type'], r['id'], r['type_name'], r['unit_name'], r['ybm'], r['ybz'], r['wton'], r['ntow']
+                        )
+                        for _, r in df_temp.iterrows()
+                    ]
+
+                    with db.pool.get_cursor() as cursor:
+                        cursor.executemany(insert_sql, values)
+                        inserted_count = len(values)
+                        logger.info(f"国家点数据成功合并到主表，共插入 {inserted_count} 条记录")
 
                     # 更新编码匹配信息
                     if inserted_count > 0:
-                        update_sql = f'''UPDATE [调查点台账合并]
-                            SET type_name = c.帐目指标名称, unit_name = c.单位名称
-                            FROM [调查点台账合并] t INNER JOIN [调查品种编码] c ON t.code = c.帐目编码
-                            WHERE t.code IS NOT NULL AND t.ybz='1' AND t.id >= {national_id_start}'''
+                        update_sql = f'''UPDATE 调查点台账合并
+                            SET type_name = (
+                                SELECT c.帐目指标名称 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
+                            ),
+                                unit_name = (
+                                SELECT c.单位名称 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
+                            )
+                            WHERE code IS NOT NULL AND ybz='1' AND id >= {national_id_start}
+                        '''
                         cursor.execute(update_sql)
                         updated_count = cursor.rowcount
                         logger.info(f"国家点数据编码匹配完成，共更新 {updated_count} 条记录")
 
                         # 更新收支类别
-                        type_update_sql = f'''UPDATE [调查点台账合并]
-                            SET type = CAST(c.收支类别 AS INT)
-                            FROM [调查点台账合并] t INNER JOIN [调查品种编码] c ON t.code = c.帐目编码
-                            WHERE t.id >= {national_id_start} AND t.code IS NOT NULL AND c.收支类别 IS NOT NULL'''
+                        type_update_sql = f'''UPDATE 调查点台账合并
+                            SET type = (
+                                SELECT CAST(c.收支类别 AS INTEGER) FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
+                            )
+                            WHERE id >= {national_id_start} AND code IS NOT NULL AND (
+                                SELECT c.收支类别 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
+                            ) IS NOT NULL'''
                         cursor.execute(type_update_sql)
                         type_updated_count = cursor.rowcount
                         logger.info(f"收支类别自动填充完成，共更新 {type_updated_count} 条记录的type字段")
@@ -348,3 +408,230 @@ def import_national_data():
         finally:
             _cleanup_file(file_path)
     return _import_national_data()
+
+
+def _read_household_excel(file_path):
+    """读取调查点户名单Excel文件"""
+    try:
+        # 使用excel_ops读取Excel文件
+        df = excel_ops.read_excel(file_path)
+        logger.info(f"成功读取调查点户名单Excel文件，共 {len(df)} 行数据")
+
+        # 验证必需的列
+        required_columns = ['户代码', '户主姓名']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Excel文件缺少必需的列: {missing_columns}")
+
+        # 清理数据
+        df = df.dropna(subset=['户代码', '户主姓名'])  # 删除关键字段为空的行
+        df = df.drop_duplicates(subset=['户代码'])  # 删除重复的户代码
+
+        # 确保数据类型正确
+        df['户代码'] = df['户代码'].astype(str).str.strip()
+        df['户主姓名'] = df['户主姓名'].astype(str).str.strip()
+
+        # 处理可选字段
+        if '人数' not in df.columns:
+            df['人数'] = 1
+        else:
+            df['人数'] = pd.to_numeric(df['人数'], errors='coerce').fillna(1).astype(int)
+
+        if '所在乡镇街道' not in df.columns:
+            df['所在乡镇街道'] = ''
+        else:
+            df['所在乡镇街道'] = df['所在乡镇街道'].astype(str).fillna('').str.strip()
+
+        if '村居名称' not in df.columns:
+            df['村居名称'] = ''
+        else:
+            df['村居名称'] = df['村居名称'].astype(str).fillna('').str.strip()
+
+        # 处理时间字段（若存在，则解析为标准格式；否则保持缺省以便导入阶段决定）
+        for ts_col in ['创建时间', '更新时间']:
+            if ts_col in df.columns:
+                # 使用 pandas 解析为 datetime，无法解析的置为 NaT
+                parsed = pd.to_datetime(df[ts_col], errors='coerce')
+                # 格式化为统一字符串，无法解析的保留为 None
+                df[ts_col] = parsed.dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        logger.info(f"调查点户名单数据清理完成，有效数据 {len(df)} 行")
+        return df
+
+    except Exception as e:
+        logger.error(f"读取调查点户名单Excel文件失败: {str(e)}")
+        raise
+
+
+@data_import_bp.route('/export_household_list', methods=['GET'])
+def export_household_list():
+    """导出调查点户名单到Excel"""
+    @handle_errors
+    def _export_household_list():
+        logger.info("开始导出调查点户名单")
+
+        try:
+            # 查询调查点户名单数据（完整字段，按表结构导出）
+            sql = """
+            SELECT 户代码, 户主姓名, 人数, 所在乡镇街道, 村居名称, 创建时间, 更新时间
+            FROM 调查点户名单
+            ORDER BY 户代码
+            """
+
+            result = db.execute_query_safe(sql)
+
+            if not result:
+                return jsonify({
+                    'success': False,
+                    'message': '没有找到调查点户名单数据'
+                }), 404
+
+            # 转换为DataFrame（字段一一对应）
+            columns = ['户代码', '户主姓名', '人数', '所在乡镇街道', '村居名称', '创建时间', '更新时间']
+            df = pd.DataFrame(result, columns=columns)
+
+            # 生成文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"调查点户名单_{timestamp}.xlsx"
+
+            # 确保uploads目录存在
+            upload_dir = os.path.abspath(app_config['UPLOAD_FOLDER'])
+            if not os.path.exists(upload_dir):
+                os.makedirs(upload_dir, exist_ok=True)
+
+            file_path = os.path.join(upload_dir, filename)
+
+            # 使用excel_ops保存Excel文件
+            excel_ops._save_df_to_excel(df, file_path, '调查点户名单')
+
+            logger.info(f"调查点户名单导出成功: {file_path}")
+
+            # 返回文件供下载
+            return send_file(
+                file_path,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+
+        except Exception as e:
+            logger.error(f"导出调查点户名单失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'导出失败: {str(e)}'
+            }), 500
+
+    return _export_household_list()
+
+
+@data_import_bp.route('/import_household_list', methods=['POST'])
+def import_household_list():
+    """导入调查点户名单Excel文件"""
+    @handle_errors
+    def _import_household_list():
+        logger.info("开始导入调查点户名单")
+
+        if 'file' not in request.files:
+            return "未选择文件", 400
+
+        file = request.files['file']
+        df, error, file_path = _process_uploaded_file(
+            file, "导入调查点户名单", {'xlsx', 'xls'}, _read_household_excel
+        )
+
+        if error:
+            return error[0], error[1]
+
+        try:
+            if df.empty:
+                return "Excel文件中没有有效数据", 400
+
+            # 统计信息
+            total_rows = len(df)
+            new_count = 0
+            updated_count = 0
+            error_count = 0
+            error_details = []
+
+            logger.info(f"开始处理 {total_rows} 条调查点户名单记录")
+
+            # 逐行处理数据，使用UPSERT操作
+            with db.pool.get_cursor() as cursor:
+                for index, row in df.iterrows():
+                    try:
+                        户代码 = str(row['户代码']).strip()
+                        户主姓名 = str(row['户主姓名']).strip()
+                        人数 = int(row['人数']) if pd.notna(row['人数']) else 1
+                        所在乡镇街道 = str(row['所在乡镇街道']).strip() if pd.notna(row['所在乡镇街道']) else ''
+                        村居名称 = str(row['村居名称']).strip() if pd.notna(row['村居名称']) else ''
+
+                        # 验证必需字段
+                        if not 户代码 or not 户主姓名:
+                            error_count += 1
+                            error_details.append(f"第{index+2}行: 户代码或户主姓名为空")
+                            continue
+
+                        # 检查记录是否已存在
+                        check_sql = "SELECT COUNT(*) FROM 调查点户名单 WHERE 户代码 = ?"
+                        cursor.execute(check_sql, (户代码,))
+                        exists = cursor.fetchone()[0] > 0
+
+                        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        # 支持从Excel读取的时间字段（若提供）
+                        提供创建时间 = ('创建时间' in df.columns and pd.notna(row.get('创建时间')))
+                        提供更新时间 = ('更新时间' in df.columns and pd.notna(row.get('更新时间')))
+                        创建时间值 = str(row.get('创建时间')) if 提供创建时间 else current_time
+                        更新时间值 = str(row.get('更新时间')) if 提供更新时间 else current_time
+
+                        if exists:
+                            # 更新现有记录（不修改创建时间）
+                            update_sql = """
+                            UPDATE 调查点户名单
+                            SET 户主姓名 = ?, 人数 = ?, 所在乡镇街道 = ?, 村居名称 = ?, 更新时间 = ?
+                            WHERE 户代码 = ?
+                            """
+                            cursor.execute(update_sql, (户主姓名, 人数, 所在乡镇街道, 村居名称, 更新时间值, 户代码))
+                            updated_count += 1
+                            logger.debug(f"更新户代码 {户代码} 的记录")
+                        else:
+                            # 插入新记录（若Excel提供则使用提供的时间）
+                            insert_sql = """
+                            INSERT INTO 调查点户名单 (户代码, 户主姓名, 人数, 所在乡镇街道, 村居名称, 创建时间, 更新时间)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """
+                            cursor.execute(insert_sql, (户代码, 户主姓名, 人数, 所在乡镇街道, 村居名称, 创建时间值, 更新时间值))
+                            new_count += 1
+                            logger.debug(f"插入新户代码 {户代码} 的记录")
+
+                    except Exception as e:
+                        error_count += 1
+                        error_details.append(f"第{index+2}行处理失败: {str(e)}")
+                        logger.warning(f"处理第{index+2}行数据失败: {str(e)}")
+                        continue
+
+            # 构建返回消息
+            summary_message = f"调查点户名单导入完成！\n"
+            summary_message += f"• 总处理记录数：{total_rows} 条\n"
+            summary_message += f"• 新增记录：{new_count} 条\n"
+            summary_message += f"• 更新记录：{updated_count} 条\n"
+
+            if error_count > 0:
+                summary_message += f"• 错误记录：{error_count} 条\n"
+                if error_details:
+                    summary_message += f"• 错误详情：\n"
+                    # 只显示前5个错误详情，避免消息过长
+                    for detail in error_details[:5]:
+                        summary_message += f"  - {detail}\n"
+                    if len(error_details) > 5:
+                        summary_message += f"  - 还有 {len(error_details) - 5} 个错误未显示\n"
+
+            logger.info(f"调查点户名单导入完成 - 新增: {new_count}, 更新: {updated_count}, 错误: {error_count}")
+            return summary_message
+
+        except Exception as e:
+            logger.error(f"导入调查点户名单过程中发生错误: {str(e)}")
+            return f"导入过程中发生错误: {str(e)}", 500
+        finally:
+            _cleanup_file(file_path)
+
+    return _import_household_list()
