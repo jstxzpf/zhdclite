@@ -279,8 +279,13 @@
 
             // 添加一个简单的测试来验证JavaScript是否工作
             try {
-                document.getElementById('totalMappings').textContent = '测试中...';
-                console.log('✅ 基础DOM操作正常');
+                // 测试基础DOM操作
+                const testElement = document.querySelector('h1');
+                if (testElement) {
+                    console.log('✅ 基础DOM操作正常');
+                } else {
+                    console.warn('⚠️ 未找到测试元素');
+                }
             } catch (error) {
                 console.error('❌ 基础DOM操作失败:', error);
             }
@@ -464,7 +469,7 @@
         // 提交表单 - 优化版支持异步处理和进度反馈
         function submitForm(form, loadingText) {
             const formId = form.getAttribute('id');
-            
+
             // 检查是否为大文件上传，启用特殊处理
             const fileInput = form.querySelector('input[type="file"]');
             const isLargeFileUpload = fileInput && fileInput.files[0] && fileInput.files[0].size > 10 * 1024 * 1024; // 10MB
@@ -568,7 +573,7 @@
             })
             .then(async response => {
                 const contentType = response.headers.get('content-type');
-                
+
                 if (contentType && contentType.includes('application/json')) {
                     const data = await response.json();
                     completedSuccessfully = data.success || response.ok;
@@ -739,22 +744,43 @@
             if (action.includes('ledger')) return '电子台账.xlsx';
             return 'download.xlsx';
         }
+        // 获取与 input 关联的 label（优先 for=，回退 nextElementSibling）
+        function getAssociatedLabel(input) {
+            if (!input) return null;
+            if (input.id) {
+                const byFor = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+                if (byFor) return byFor;
+            }
+            const sib = input.nextElementSibling;
+            if (sib && sib.tagName && sib.tagName.toLowerCase() === 'label') return sib;
+            return null;
+        }
+
+
 
         // 设置文件上传
         function setupFileUpload() {
             const fileInputs = document.querySelectorAll('input[type="file"]');
 
             fileInputs.forEach(input => {
-                const label = input.nextElementSibling;
+                const label = getAssociatedLabel(input);
 
-                // 文件选择事件
+                // 文件选择事件（始终绑定）
                 input.addEventListener('change', function(e) {
                     const file = e.target.files[0];
                     if (file) {
-                        updateFileLabel(label, file);
+                        // 仅当存在关联的label时才更新展示
+                        if (label && label.tagName && label.tagName.toLowerCase() === 'label') {
+                            updateFileLabel(label, file);
+                        }
                         validateFile(file, input);
                     }
                 });
+
+                // 如果没有配套的label（如隐藏的原生input），跳过拖拽相关事件
+                if (!(label && label.tagName && label.tagName.toLowerCase() === 'label')) {
+                    return;
+                }
 
                 // 拖拽事件
                 label.addEventListener('dragover', function(e) {
@@ -781,21 +807,22 @@
             });
         }
 
-        // 更新文件标签
+        // 更新文件标签（对缺少自定义label的input安全降级）
         function updateFileLabel(label, file) {
+            if (!label || !label.querySelector) return;
             const span = label.querySelector('span');
             const small = label.querySelector('small');
 
-            span.textContent = file.name;
-            small.textContent = `文件大小: ${formatFileSize(file.size)}`;
-            label.classList.add('file-selected');
+            if (span) span.textContent = file.name;
+            if (small) small.textContent = `文件大小: ${formatFileSize(file.size)}`;
+            if (label.classList) label.classList.add('file-selected');
         }
 
         // 验证文件
         function validateFile(file, input) {
             const maxSize = 50 * 1024 * 1024; // 50MB
             const fileName = file.name.toLowerCase();
-            
+
             // 根据不同的input确定允许的文件类型
             let allowedTypes;
             if (input.id === 'import_national_file') {
@@ -811,7 +838,10 @@
                 const typeStr = allowedTypes.join(' 或 ');
                 showMessage(`文件类型不支持，请选择 ${typeStr} 格式的文件`, 'error');
                 input.value = '';
-                resetFileLabel(input.nextElementSibling);
+                const siblingLabel = getAssociatedLabel(input);
+                if (siblingLabel) {
+                    resetFileLabel(siblingLabel);
+                }
                 return false;
             }
 
@@ -819,7 +849,10 @@
             if (file.size > maxSize) {
                 showMessage('文件大小超过50MB限制', 'error');
                 input.value = '';
-                resetFileLabel(input.nextElementSibling);
+                const siblingLabel = getAssociatedLabel(input);
+                if (siblingLabel) {
+                    resetFileLabel(siblingLabel);
+                }
                 return false;
             }
 
@@ -831,7 +864,7 @@
             const span = label.querySelector('span');
             const small = label.querySelector('small');
             const input = label.previousElementSibling;
-            
+
             if (input.id === 'import_national_file') {
                 span.textContent = '选择CSV文件或拖拽到此处';
                 small.textContent = '支持 .csv 格式，最大50MB';
@@ -878,7 +911,7 @@
         function showLoadingWithProgress(text = '正在处理中...') {
             const overlay = document.getElementById('loadingOverlay');
             const loadingText = document.getElementById('loadingText');
-            
+
             // 修改加载文本显示，添加进度提示
             loadingText.innerHTML = `
                 <div style="text-align: center;">
@@ -889,7 +922,7 @@
                     </div>
                 </div>
             `;
-            
+
             overlay.style.display = 'flex';
         }
 
@@ -933,7 +966,7 @@
             messageDiv.className = `message message-${type}`;
 
             const icon = type === 'success' ? 'check-circle' :
-                        type === 'error' ? 'exclamation-circle' : 
+                        type === 'error' ? 'exclamation-circle' :
                         type === 'warning' ? 'exclamation-triangle' : 'info-circle';
 
             messageDiv.innerHTML = `
@@ -947,7 +980,7 @@
             container.appendChild(messageDiv);
 
             // 根据消息类型调整自动移除时间
-            const autoRemoveTime = type === 'warning' ? 15000 : 
+            const autoRemoveTime = type === 'warning' ? 15000 :
                                   type === 'error' ? 12000 : 10000;
 
             // 自动移除消息
@@ -989,6 +1022,91 @@
                 if (e.target === modal) {
                     modal.style.display = 'none';
                 }
+            });
+        }
+        // 调查点户名单导出功能
+        function exportHouseholdList() {
+            showLoading('正在导出调查点户名单...');
+
+            fetch('/export_household_list', {
+                method: 'GET'
+            })
+            .then(response => {
+                if (response.ok) {
+                    // 获取文件名
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = '调查点户名单.xlsx';
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                        if (filenameMatch && filenameMatch[1]) {
+                            filename = filenameMatch[1].replace(/['"]/g, '');
+                        }
+                    }
+
+                    // 下载文件
+                    return response.blob().then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+
+                        hideLoading();
+                        showMessage('调查点户名单导出成功！', 'success');
+                    });
+                } else {
+                    return response.json().then(data => {
+                        throw new Error(data.message || '导出失败');
+                    });
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('导出调查点户名单失败:', error);
+                showMessage(`导出失败: ${error.message}`, 'error');
+            });
+        }
+
+        // 调查点户名单导入功能
+        function importHouseholdList() {
+            const fileInput = document.getElementById('import_household_file');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showMessage('请选择要导入的Excel文件', 'warning');
+                return;
+            }
+
+            // 验证文件类型
+            const allowedTypes = [
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.ms-excel'
+            ];
+
+            if (!allowedTypes.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+                showMessage('请选择Excel文件（.xlsx或.xls格式）', 'error');
+                fileInput.value = '';
+                return;
+            }
+
+            // 验证文件大小
+            const maxSize = 50 * 1024 * 1024; // 50MB
+            if (file.size > maxSize) {
+                showMessage('文件大小不能超过50MB', 'error');
+                fileInput.value = '';
+                return;
+            }
+
+            // 确认导入
+            const confirmMessage = `确定要导入调查点户名单吗？\n\n文件名: ${file.name}\n文件大小: ${(file.size / 1024 / 1024).toFixed(2)}MB\n\n此操作将更新数据库中的户名单数据。`;
+
+            showConfirmDialog(confirmMessage, () => {
+                const form = document.getElementById('householdForm');
+                submitFormWithProgress(form, '正在导入调查点户名单...');
             });
         }
 
