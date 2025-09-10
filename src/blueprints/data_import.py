@@ -478,13 +478,21 @@ def export_household_list():
 
             all_columns = [row[1] for row in pragma_rows]  # row[1] 为列名
 
-            # 2) 组装SELECT语句以导出所有字段
-            cols_sql = ', '.join([f"`{c}`" for c in all_columns])
+            # 2) 组装SELECT语句，以确保两个字段可从映射视图回填
+            select_exprs = []
+            for c in all_columns:
+                if c in ('所在乡镇街道', '村居名称'):
+                    select_exprs.append(f"COALESCE(h.`{c}`, v.`{c}`) AS `{c}`")
+                else:
+                    select_exprs.append(f"h.`{c}`")
+            cols_sql = ', '.join(select_exprs)
             order_by = '户代码' if '户代码' in all_columns else all_columns[0]
             sql = f"""
             SELECT {cols_sql}
-            FROM 调查点户名单
-            ORDER BY `{order_by}`
+            FROM `调查点户名单` h
+            LEFT JOIN `v_town_village_list` v
+              ON SUBSTR(h.`户代码`, 1, 12) = v.`村代码`
+            ORDER BY h.`{order_by}`
             """
 
             result = db.execute_query_safe(sql)
