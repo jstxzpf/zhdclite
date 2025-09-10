@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, send_from_directory, Response
 from src.database import Database
 from src.data_processing import DataProcessor
 from src.excel_operations import ExcelOperations
@@ -9,6 +9,8 @@ from src.blueprints.data_import import data_import_bp
 
 from src.blueprints.statistics import statistics_bp
 from src.blueprints.household_analysis import household_analysis_bp
+from src.blueprints.system_settings import system_settings_bp
+from src.blueprints.system_settings import init_blueprint as init_system_settings
 import os
 import logging
 from datetime import datetime
@@ -68,11 +70,16 @@ init_data_generation(db, data_processor, excel_ops, handle_errors)
 init_data_import(db, excel_ops, handle_errors, allowed_file, validate_file_size, app.config)
 
 
+init_system_settings(db, handle_errors, app.config)
+
+
 init_statistics(db, handle_errors)
 init_household_analysis(db, handle_errors)
 
 # 注册蓝图
 app.register_blueprint(data_generation_bp)
+app.register_blueprint(system_settings_bp, url_prefix='/')
+
 app.register_blueprint(data_import_bp)
 
 
@@ -214,3 +221,20 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"应用程序启动失败: {str(e)}")
         raise
+
+@app.route('/favicon.ico')
+def favicon():
+    """提供站点图标，优先返回 static/favicon.ico；否则返回内联SVG避免404"""
+    try:
+        static_dir = os.path.join(app.root_path, 'static')
+        ico_path = os.path.join(static_dir, 'favicon.ico')
+        if os.path.exists(ico_path):
+            return send_from_directory(static_dir, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    except Exception:
+        pass
+    # 回退：返回一个简单的SVG作为图标
+    svg = """<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+    <rect width='64' height='64' fill='#007bff'/>
+    <text x='50%' y='58%' dominant-baseline='middle' text-anchor='middle' font-size='42' fill='white'>S</text>
+    </svg>"""
+    return Response(svg, mimetype='image/svg+xml')

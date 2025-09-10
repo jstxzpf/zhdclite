@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <!-- 添加Font Awesome图标库 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23007bff'/%3E%3Ctext x='50%' y='58%' dominant-baseline='middle' text-anchor='middle' font-size='42' fill='white'%3ES%3C/text%3E%3C/svg%3E">
 </head>
 <body>
     <!-- 加载遮罩 -->
@@ -58,6 +59,11 @@
                 <i class="fas fa-chart-bar"></i>
                 <span>数据统计</span>
             </div>
+            <div class="nav-item" data-section="system-settings">
+                <i class="fas fa-cog"></i>
+                <span>系统设置</span>
+            </div>
+
 
         </nav>
 
@@ -259,10 +265,61 @@
                     </div>
                     <button type="submit" class="btn btn-success">
                         <i class="fas fa-upload"></i> 导入国家点数据
+
                     </button>
                 </form>
             </div>
         </section>
+
+
+            <!-- 系统设置模块 -->
+            <section class="module-section" id="system-settings">
+                <div class="section-header">
+                    <h2><i class="fas fa-cog"></i> 系统设置</h2>
+                    <p class="section-description">数据库维护与风险操作，请谨慎使用</p>
+                </div>
+
+                <div class="form-card">
+                    <div class="card-header">
+                        <h3><i class="fas fa-shield-alt"></i> 数据维护与备份</h3>
+                        <div class="card-status">
+                            <span class="status-badge ready">就绪</span>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="button-group">
+                            <!-- 危险操作：清空数据 -->
+                            <button type="button" class="btn btn-danger" onclick="clearHouseholdList()">
+                                <i class="fas fa-trash"></i> 清空调查点户名单
+                            </button>
+                            <button type="button" class="btn btn-danger" onclick="clearVillageList()">
+                                <i class="fas fa-trash"></i> 清空调查点村名单
+                            </button>
+                            <button type="button" class="btn btn-danger" onclick="clearAccountData()">
+                                <i class="fas fa-trash"></i> 清空当前账目数据
+                            </button>
+                        </div>
+                        <div class="button-group" style="margin-top:12px;">
+                            <!-- 备份与恢复 -->
+                            <button type="button" class="btn btn-primary" onclick="backupDatabase()">
+                                <i class="fas fa-download"></i> 备份数据库
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="openRestoreDialog()">
+                                <i class="fas fa-upload"></i> 恢复数据库
+                            </button>
+                            <input type="file" id="restore_db_file" accept=".db" style="display:none" onchange="handleRestoreFileChange()" />
+                        </div>
+                        <div class="form-help">
+                            <p><i class="fas fa-info-circle"></i> 使用说明：</p>
+                            <ul>
+                                <li>清空操作不可恢复，请先进行数据库备份。</li>
+                                <li>备份会生成文件名格式为 <code>database_backup_YYYYMMDD_HHMMSS.db</code> 的文件供下载。</li>
+                                <li>恢复将用上传的数据库文件替换当前数据库，当前数据将丢失。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
 
 
@@ -385,37 +442,45 @@
         }
 
 
-        // 设置导航功能
+        // 设置导航功能（简化并修复切换问题）
         function setupNavigation() {
             const navItems = document.querySelectorAll('.nav-item');
             const sections = document.querySelectorAll('.module-section');
 
-            navItems.forEach(item => {
-                item.addEventListener('click', function() {
-                    const targetSection = this.getAttribute('data-section');
+            function activateSection(targetId) {
+                // 切换内容区
+                sections.forEach(section => {
+                    if (section.id === targetId) {
+                        section.classList.add('active');
+                    } else {
+                        section.classList.remove('active');
+                    }
+                });
+                // 切换导航高亮
+                navItems.forEach(item => {
+                    if (item.getAttribute('data-section') === targetId) {
+                        item.classList.add('active');
+                    } else {
+                        item.classList.remove('active');
+                    }
+                });
+                // 滚动到顶部，提升可见性
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
 
-                    // 特殊处理统计页面 - 跳转到新页面
+            navItems.forEach(item => {
+                item.addEventListener('click', function(ev) {
+                    ev.preventDefault();
+                    const targetSection = this.getAttribute('data-section');
+                    if (!targetSection) return;
+
+                    // 统计页面单独新开窗口
                     if (targetSection === 'statistics') {
                         window.open('/statistics', '_blank');
                         return;
                     }
 
-
-
-                    // 更新导航状态
-                    navItems.forEach(nav => nav.classList.remove('active'));
-                    this.classList.add('active');
-
-            // 从接口填充乡镇下拉框（移动到全局，避免作用域问题）
-            // 这里保留一个空函数占位，防止未来重复定义
-            function populateTowns() {}
-                    // 显示对应的模块
-                    sections.forEach(section => {
-                        section.classList.remove('active');
-                        if (section.id === targetSection) {
-                            section.classList.add('active');
-                        }
-                    });
+                    activateSection(targetSection);
                 });
             });
         }
@@ -1205,11 +1270,116 @@
                     fileInput.value = '';
                     return;
                 }
+                // 确认导入并提交表单
                 const confirmMessage = `确定要导入调查点村名单吗？\n\n文件名: ${file.name}\n文件大小: ${(file.size / 1024 / 1024).toFixed(2)}MB\n\n此操作将更新数据库中的村名单数据。`;
                 showConfirmDialog(confirmMessage, () => {
                     const form = document.getElementById('villageForm');
                     submitFormWithProgress(form, '正在导入调查点村名单...');
                 });
+            }
+
+
+            // ===== 系统设置 前端交互 =====
+            function clearWithConfirm(url, confirmText, loadingText) {
+                showConfirmDialog(confirmText, () => {
+                    showLoading(loadingText);
+                    fetch(url, { method: 'DELETE' })
+                        .then(res => res.json())
+                        .then(data => {
+                            showMessage(data.message || '操作完成', data.success ? 'success' : 'error');
+                        })
+                        .catch(err => {
+                            showMessage('请求失败：' + err.message, 'error');
+                        })
+                        .finally(() => hideLoading());
+                });
+            }
+
+            function clearHouseholdList() {
+                clearWithConfirm(
+                    '/api/system/clear-household-list',
+                    '此操作将永久删除所有调查点户名单数据，无法恢复。确定要继续吗？',
+                    '正在清空调查点户名单...'
+                );
+            }
+
+            function clearVillageList() {
+                clearWithConfirm(
+                    '/api/system/clear-village-list',
+                    '此操作将永久删除所有调查点村名单数据，无法恢复。确定要继续吗？',
+                    '正在清空调查点村名单...'
+                );
+            }
+
+            function clearAccountData() {
+                clearWithConfirm(
+                    '/api/system/clear-account-data',
+                    '此操作将永久删除所有当前账目数据，无法恢复。确定要继续吗？',
+                    '正在清空当前账目数据...'
+                );
+            }
+
+            function backupDatabase() {
+                showLoading('正在创建数据库备份...');
+                fetch('/api/system/backup-database')
+                    .then(response => {
+                        if (!response.ok) throw new Error('备份失败');
+                        const disposition = response.headers.get('Content-Disposition');
+                        let filename = 'database_backup.db';
+                        if (disposition) {
+                            const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="([^"]+)"/);
+                            if (match) filename = decodeURIComponent(match[1] || match[2]);
+                        }
+                        return response.blob().then(blob => ({ blob, filename }));
+                    })
+                    .then(({ blob, filename }) => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        showMessage('数据库备份成功', 'success');
+                    })
+                    .catch(err => {
+                        showMessage('备份失败：' + err.message, 'error');
+                    })
+                    .finally(() => hideLoading());
+            }
+
+            function openRestoreDialog() {
+                const input = document.getElementById('restore_db_file');
+                if (input) input.click();
+            }
+
+            function handleRestoreFileChange() {
+                const input = document.getElementById('restore_db_file');
+                const file = input.files && input.files[0];
+                if (!file) return;
+                if (!file.name.toLowerCase().endsWith('.db')) {
+                    showMessage('仅支持 .db SQLite 文件', 'error');
+                    input.value = '';
+                    return;
+                }
+                const confirmText = '此操作将用上传的数据库文件替换当前数据库，当前数据将丢失。确定要继续吗？';
+                showConfirmDialog(confirmText, () => doRestore(file));
+            }
+
+            function doRestore(file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                showLoading('正在恢复数据库...');
+                fetch('/api/system/restore-database', { method: 'POST', body: formData })
+                    .then(res => res.json())
+                    .then(data => {
+                        showMessage(data.message || '恢复完成', data.success ? 'success' : 'error');
+                    })
+                    .catch(err => {
+                        showMessage('恢复失败：' + err.message, 'error');
+                    })
+                    .finally(() => hideLoading());
             }
 
 
