@@ -471,33 +471,37 @@ def export_household_list():
         logger.info("开始导出调查点户名单")
 
         try:
-            # 1) 动态获取表的全部列（按建表顺序）
-            pragma_rows = db.execute_query_safe("PRAGMA table_info('调查点户名单')")
-            if not pragma_rows:
-                return jsonify({'success': False, 'message': '无法获取表结构: 调查点户名单'}), 500
-
-            all_columns = [row[1] for row in pragma_rows]  # row[1] 为列名
-
-            # 2) 组装SELECT语句，以确保两个字段可从映射视图回填
-            select_exprs = []
-            for c in all_columns:
-                if c in ('所在乡镇街道', '村居名称'):
-                    # 将空字符串视为NULL，依次用 视图/村名单 表回填
-                    select_exprs.append(
-                        f"COALESCE(NULLIF(TRIM(h.`{c}`), ''), NULLIF(TRIM(v.`{c}`), ''), NULLIF(TRIM(m.`{c}`), '')) AS `{c}`"
-                    )
-                else:
-                    select_exprs.append(f"h.`{c}`")
-            cols_sql = ', '.join(select_exprs)
-            order_by = '户代码' if '户代码' in all_columns else all_columns[0]
-            sql = f"""
-            SELECT {cols_sql}
-            FROM `调查点户名单` h
-            LEFT JOIN `v_town_village_list` v
-              ON SUBSTR(h.`户代码`, 1, 12) = v.`村代码`
-            LEFT JOIN `调查点村名单` m
-              ON SUBSTR(h.`户代码`, 1, 12) = m.`户代码前12位`
-            ORDER BY h.`{order_by}`
+            # 使用已验证的SQL查询，确保正确回填所在乡镇街道和村居名称
+            sql = """
+            SELECT
+                h.户代码,
+                h.户主姓名,
+                h.人数,
+                CASE
+                    WHEN h.所在乡镇街道 IS NOT NULL AND TRIM(h.所在乡镇街道) != '' THEN h.所在乡镇街道
+                    WHEN v.所在乡镇街道 IS NOT NULL AND TRIM(v.所在乡镇街道) != '' THEN v.所在乡镇街道
+                    WHEN m.所在乡镇街道 IS NOT NULL AND TRIM(m.所在乡镇街道) != '' THEN m.所在乡镇街道
+                    ELSE ''
+                END AS 所在乡镇街道,
+                CASE
+                    WHEN h.村居名称 IS NOT NULL AND TRIM(h.村居名称) != '' THEN h.村居名称
+                    WHEN v.村居名称 IS NOT NULL AND TRIM(v.村居名称) != '' THEN v.村居名称
+                    WHEN m.村居名称 IS NOT NULL AND TRIM(m.村居名称) != '' THEN m.村居名称
+                    WHEN h.调查小区名称 IS NOT NULL AND TRIM(h.调查小区名称) != '' THEN h.调查小区名称
+                    ELSE ''
+                END AS 村居名称,
+                h.创建时间,
+                h.更新时间,
+                h.密码,
+                h.调查小区名称,
+                h.城乡属性,
+                h.住宅地址,
+                h.家庭人口,
+                h.是否退出
+            FROM 调查点户名单 h
+            LEFT JOIN v_town_village_list v ON SUBSTR(h.户代码, 1, 12) = v.村代码
+            LEFT JOIN 调查点村名单 m ON SUBSTR(h.户代码, 1, 12) = m.户代码前12位
+            ORDER BY h.户代码
             """
 
             result = db.execute_query_safe(sql)
@@ -508,8 +512,11 @@ def export_household_list():
                     'message': '没有找到调查点户名单数据'
                 }), 404
 
-            # 3) 转为DataFrame（包含所有字段）
-            df = pd.DataFrame(result, columns=all_columns)
+            # 定义列名（与SQL SELECT顺序一致）
+            columns = ['户代码', '户主姓名', '人数', '所在乡镇街道', '村居名称', '创建时间', '更新时间',
+                      '密码', '调查小区名称', '城乡属性', '住宅地址', '家庭人口', '是否退出']
+
+            df = pd.DataFrame(result, columns=columns)
 
             # 3.1) 额外回填兜底：
             # - 若“村居名称”仍为空，优先用“调查小区名称”补上
@@ -527,13 +534,14 @@ def export_household_list():
                         return addr[:i + len(kw)]
                 return ''
 
-            if '村居名称' in df.columns and '调查小区名称' in df.columns:
-                df['村居名称'] = df['村居名称'].where(~df['村居名称'].apply(_is_empty), df['调查小区名称'])
+            # 额外回填已经在SQL中处理，这里不再需要
+            # if '村居名称' in df.columns and '调查小区名称' in df.columns:
+            #     df['村居名称'] = df['村居名称'].where(~df['村居名称'].apply(_is_empty), df['调查小区名称'])
 
-            if '所在乡镇街道' in df.columns and '住宅地址' in df.columns:
-                df['所在乡镇街道'] = df.apply(
-                    lambda r: r['所在乡镇街道'] if not _is_empty(r.get('所在乡镇街道')) else _extract_town(r.get('住宅地址')), axis=1
-                )
+            # if '所在乡镇街道' in df.columns and '住宅地址' in df.columns:
+            #     df['所在乡镇街道'] = df.apply(
+            #         lambda r: r['所在乡镇街道'] if not _is_empty(r.get('所在乡镇街道')) else _extract_town(r.get('住宅地址')), axis=1
+            #     )
 
             # 4) 生成文件
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
