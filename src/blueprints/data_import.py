@@ -471,11 +471,20 @@ def export_household_list():
         logger.info("开始导出调查点户名单")
 
         try:
-            # 查询调查点户名单数据（完整字段，按表结构导出）
-            sql = """
-            SELECT 户代码, 户主姓名, 人数, 所在乡镇街道, 村居名称, 创建时间, 更新时间
+            # 1) 动态获取表的全部列（按建表顺序）
+            pragma_rows = db.execute_query_safe("PRAGMA table_info('调查点户名单')")
+            if not pragma_rows:
+                return jsonify({'success': False, 'message': '无法获取表结构: 调查点户名单'}), 500
+
+            all_columns = [row[1] for row in pragma_rows]  # row[1] 为列名
+
+            # 2) 组装SELECT语句以导出所有字段
+            cols_sql = ', '.join([f"`{c}`" for c in all_columns])
+            order_by = '户代码' if '户代码' in all_columns else all_columns[0]
+            sql = f"""
+            SELECT {cols_sql}
             FROM 调查点户名单
-            ORDER BY 户代码
+            ORDER BY `{order_by}`
             """
 
             result = db.execute_query_safe(sql)
@@ -486,15 +495,13 @@ def export_household_list():
                     'message': '没有找到调查点户名单数据'
                 }), 404
 
-            # 转换为DataFrame（字段一一对应）
-            columns = ['户代码', '户主姓名', '人数', '所在乡镇街道', '村居名称', '创建时间', '更新时间']
-            df = pd.DataFrame(result, columns=columns)
+            # 3) 转为DataFrame（包含所有字段）
+            df = pd.DataFrame(result, columns=all_columns)
 
-            # 生成文件名
+            # 4) 生成文件
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"调查点户名单_{timestamp}.xlsx"
 
-            # 确保uploads目录存在
             upload_dir = os.path.abspath(app_config['UPLOAD_FOLDER'])
             if not os.path.exists(upload_dir):
                 os.makedirs(upload_dir, exist_ok=True)
