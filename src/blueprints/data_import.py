@@ -482,7 +482,10 @@ def export_household_list():
             select_exprs = []
             for c in all_columns:
                 if c in ('所在乡镇街道', '村居名称'):
-                    select_exprs.append(f"COALESCE(h.`{c}`, v.`{c}`) AS `{c}`")
+                    # 将空字符串视为NULL，依次用 视图/村名单 表回填
+                    select_exprs.append(
+                        f"COALESCE(NULLIF(TRIM(h.`{c}`), ''), NULLIF(TRIM(v.`{c}`), ''), NULLIF(TRIM(m.`{c}`), '')) AS `{c}`"
+                    )
                 else:
                     select_exprs.append(f"h.`{c}`")
             cols_sql = ', '.join(select_exprs)
@@ -492,6 +495,8 @@ def export_household_list():
             FROM `调查点户名单` h
             LEFT JOIN `v_town_village_list` v
               ON SUBSTR(h.`户代码`, 1, 12) = v.`村代码`
+            LEFT JOIN `调查点村名单` m
+              ON SUBSTR(h.`户代码`, 1, 12) = m.`户代码前12位`
             ORDER BY h.`{order_by}`
             """
 
@@ -505,6 +510,30 @@ def export_household_list():
 
             # 3) 转为DataFrame（包含所有字段）
             df = pd.DataFrame(result, columns=all_columns)
+
+            # 3.1) 额外回填兜底：
+            # - 若“村居名称”仍为空，优先用“调查小区名称”补上
+            # - 若“所在乡镇街道”仍为空，尝试从“住宅地址”提取（如：xxx街道办事处 / xxx镇 / xxx乡）
+            def _is_empty(x):
+                return x is None or (isinstance(x, str) and x.strip() == '')
+
+            def _extract_town(addr: str) -> str:
+                if not isinstance(addr, str):
+                    return ''
+                addr = addr.strip()
+                for kw in ['街道办事处', '街道', '镇', '乡']:
+                    i = addr.find(kw)
+                    if i != -1:
+                        return addr[:i + len(kw)]
+                return ''
+
+            if '村居名称' in df.columns and '调查小区名称' in df.columns:
+                df['村居名称'] = df['村居名称'].where(~df['村居名称'].apply(_is_empty), df['调查小区名称'])
+
+            if '所在乡镇街道' in df.columns and '住宅地址' in df.columns:
+                df['所在乡镇街道'] = df.apply(
+                    lambda r: r['所在乡镇街道'] if not _is_empty(r.get('所在乡镇街道')) else _extract_town(r.get('住宅地址')), axis=1
+                )
 
             # 4) 生成文件
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
