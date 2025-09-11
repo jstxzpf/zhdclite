@@ -118,7 +118,7 @@ def statistics_page():
 def get_overview_statistics():
     """获取总体统计概览"""
     where_clause, params = _build_query_filters()
-    
+
     sql = f"""
     SELECT
         COUNT(*), COUNT(DISTINCT t.hudm), COUNT(DISTINCT (t.year || '-' || t.month)),
@@ -130,7 +130,7 @@ def get_overview_statistics():
     FROM `调查点台账合并` t
     {where_clause}
     """
-    
+
     result = db.execute_query_safe(sql, params)
     if result and result[0]:
         data = result[0]
@@ -318,7 +318,7 @@ def get_available_filters():
     """获取可用的筛选选项，支持级联筛选"""
     town_filter = request.args.get('town')
     village_filter = request.args.get('village')
-    
+
     # 获取年份和月份选项
     year_result = db.execute_query_safe("SELECT DISTINCT year FROM `调查点台账合并` WHERE year IS NOT NULL ORDER BY year")
     years = sorted([str(row[0]) for row in year_result if row[0] and str(row[0]).isdigit() and 2020 <= int(row[0]) <= 2030])
@@ -371,14 +371,22 @@ def get_available_filters():
         household_result = db.execute_query_safe(
             "SELECT DISTINCT t.hudm, h.`户主姓名` FROM `调查点台账合并` t LEFT JOIN `调查点户名单` h ON t.hudm = h.`户代码` ORDER BY t.hudm"
         )
-    
-    households = [{'code': row[0], 'name': row[1]} for row in household_result if row[0] and row[1]]
+
+    # 保证前端下拉有名称可显示：若户主姓名缺失则使用“未登记”占位
+    households = []
+    for row in (household_result or []):
+        code = row[0]
+        name = (row[1] if len(row) > 1 else None)
+        name = str(name).strip() if name is not None else ''
+        display_name = name if name else '未登记'
+        if code:
+            households.append({'code': code, 'name': display_name})
 
     filter_data = {
-        'years': years, 
-        'months': months, 
-        'towns': towns, 
-        'villages': villages, 
+        'years': years,
+        'months': months,
+        'towns': towns,
+        'villages': villages,
         'households': households
     }
     return ResponseHelper.success_response(filter_data)
@@ -397,9 +405,61 @@ def get_villages():
     town_name = request.args.get('town')
     if not town_name:
         return ResponseHelper.error_response('缺少乡镇参数')
-    
+
     villages = query_service.get_villages_by_town(town_name)
     return ResponseHelper.success_response(villages)
+
+@statistics_bp.route('/api/households_by_village')
+@handle_api_exception
+def get_households_by_village():
+    """兜底接口：按村代码直接从“调查点户名单”获取户列表（不依赖台账）"""
+    village_code = request.args.get('village')
+    if not village_code or len(village_code.strip()) != 12:
+        return ResponseHelper.validation_error_response('village', '需要提供12位的村代码')
+
+    rows = db.execute_query_safe(
+        """
+        SELECT DISTINCT h.`户代码`,
+               CASE WHEN h.`户主姓名` IS NOT NULL AND TRIM(h.`户主姓名`) <> '' THEN TRIM(h.`户主姓名`)
+                    ELSE '未登记' END AS `户主姓名`
+        FROM `调查点户名单` h
+        WHERE SUBSTR(h.`户代码`, 1, 12) = ?
+        ORDER BY h.`户代码`
+        """,
+        [village_code]
+    )
+
+    households = [{'code': r[0], 'name': r[1]} for r in rows if r and r[0]]
+    return ResponseHelper.success_response(households)
+
+@statistics_bp.route('/api/households_by_town')
+@handle_api_exception
+def get_households_by_town():
+    """兜底接口：按乡镇名聚合其下所有村代码，再从“调查点户名单”获取户列表"""
+    town_name = request.args.get('town')
+    if not town_name:
+        return ResponseHelper.validation_error_response('town', '缺少乡镇参数')
+
+    mapping = _get_town_village_mapping()
+    village_codes = mapping['town_to_villages'].get(town_name)
+    if not village_codes:
+        return ResponseHelper.success_response([])
+
+    placeholders = ','.join(['?' for _ in village_codes])
+    rows = db.execute_query_safe(
+        f"""
+        SELECT DISTINCT h.`户代码`,
+               CASE WHEN h.`户主姓名` IS NOT NULL AND TRIM(h.`户主姓名`) <> '' THEN TRIM(h.`户主姓名`)
+                    ELSE '未登记' END AS `户主姓名`
+        FROM `调查点户名单` h
+        WHERE SUBSTR(h.`户代码`, 1, 12) IN ({placeholders})
+        ORDER BY h.`户代码`
+        """,
+        village_codes
+    )
+
+    households = [{'code': r[0], 'name': r[1]} for r in rows if r and r[0]]
+    return ResponseHelper.success_response(households)
 
 @statistics_bp.route('/api/statistics/refresh_cache', methods=['POST'])
 @handle_api_exception

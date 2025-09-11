@@ -203,29 +203,33 @@ class QueryService:
         """
         一次性获取所有乡镇统计数据，避免N+1查询问题
         """
-        # 如果没有筛选条件，直接使用缓存表
+        # 如果没有筛选条件，优先使用缓存表；若缓存表不存在或查询失败，则回退到实时查询
         if not where_clause or where_clause.strip() == "":
-            cache_sql = """
-            SELECT 乡镇名称, 记账笔数, 户数, 收入笔数, 支出笔数, 收入总额, 支出总额, 未编码笔数, 已编码笔数
-            FROM town_statistics_cache
-            ORDER BY 乡镇名称
-            """
-            result = self.db.execute_query_safe(cache_sql)
-            if result:
-                return [
-                    {
-                        '乡镇名称': row[0],
-                        '记账笔数': row[1] or 0,
-                        '户数': row[2] or 0,
-                        '收入笔数': row[3] or 0,
-                        '支出笔数': row[4] or 0,
-                        '收入总额': float(row[5] or 0),
-                        '支出总额': float(row[6] or 0),
-                        '未编码笔数': row[7] or 0,
-                        '已编码笔数': row[8] or 0
-                    }
-                    for row in result
-                ]
+            try:
+                cache_sql = """
+                SELECT 乡镇名称, 记账笔数, 户数, 收入笔数, 支出笔数, 收入总额, 支出总额, 未编码笔数, 已编码笔数
+                FROM town_statistics_cache
+                ORDER BY 乡镇名称
+                """
+                result = self.db.execute_query_safe(cache_sql)
+                if result:
+                    return [
+                        {
+                            '乡镇名称': row[0],
+                            '记账笔数': row[1] or 0,
+                            '户数': row[2] or 0,
+                            '收入笔数': row[3] or 0,
+                            '支出笔数': row[4] or 0,
+                            '收入总额': float(row[5] or 0),
+                            '支出总额': float(row[6] or 0),
+                            '未编码笔数': row[7] or 0,
+                            '已编码笔数': row[8] or 0
+                        }
+                        for row in result
+                    ]
+            except Exception as e:
+                # 缓存表缺失或查询失败时，记录日志并回退到实时查询
+                self.logger.warning(f"读取town_statistics_cache失败，将使用实时查询: {e}")
 
         # 有筛选条件时使用优化后的实时查询
         sql = f"""
@@ -233,15 +237,15 @@ class QueryService:
             v.所在乡镇街道 as 乡镇名称,
             COUNT(*) as 记账笔数,
             COUNT(DISTINCT t.hudm) as 户数,
-            COUNT(CASE WHEN t.type = 1 THEN 1 END) as 收入笔数,
-            COUNT(CASE WHEN t.type = 2 THEN 1 END) as 支出笔数,
-            SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END) as 收入总额,
-            SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END) as 支出总额,
-            COUNT(CASE WHEN t.code IS NULL THEN 1 END) as 未编码笔数,
-            COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END) as 已编码笔数
+            SUM(CASE WHEN t.id IS NOT NULL AND t.type = 1 THEN 1 ELSE 0 END) as 收入笔数,
+            SUM(CASE WHEN t.id IS NOT NULL AND t.type = 2 THEN 1 ELSE 0 END) as 支出笔数,
+            SUM(CASE WHEN t.id IS NOT NULL AND t.type = 1 THEN t.money ELSE 0 END) as 收入总额,
+            SUM(CASE WHEN t.id IS NOT NULL AND t.type = 2 THEN t.money ELSE 0 END) as 支出总额,
+            SUM(CASE WHEN t.id IS NOT NULL AND t.code IS NULL THEN 1 ELSE 0 END) as 未编码笔数,
+            SUM(CASE WHEN t.id IS NOT NULL AND t.code IS NOT NULL THEN 1 ELSE 0 END) as 已编码笔数
         FROM `v_town_village_list` v
         LEFT JOIN `调查点台账合并` t ON SUBSTR(t.hudm, 1, 12) = v.村代码
-        {('WHERE ' + where_clause) if where_clause else ''}
+        {where_clause}
         GROUP BY v.所在乡镇街道
         ORDER BY v.所在乡镇街道
         """
@@ -266,11 +270,45 @@ class QueryService:
         return []
 
     def refresh_statistics_cache(self):
-        """刷新统计缓存表"""
+        """刷新统计缓存表（若缓存表不存在则自动创建）"""
         try:
             self.logger.info("开始刷新统计缓存...")
 
-            # 刷新乡镇统计缓存
+            # 1) 确保缓存表存在
+            create_town_cache_sql = """
+            CREATE TABLE IF NOT EXISTS town_statistics_cache (
+                乡镇名称 TEXT,
+                记账笔数 INTEGER,
+                户数 INTEGER,
+                收入笔数 INTEGER,
+                支出笔数 INTEGER,
+                收入总额 REAL,
+                支出总额 REAL,
+                未编码笔数 INTEGER,
+                已编码笔数 INTEGER,
+                更新时间 TEXT
+            )
+            """
+            self.db.execute_query_safe(create_town_cache_sql)
+
+            create_month_cache_sql = """
+            CREATE TABLE IF NOT EXISTS month_statistics_cache (
+                年份 INTEGER,
+                月份 INTEGER,
+                记账笔数 INTEGER,
+                户数 INTEGER,
+                收入笔数 INTEGER,
+                支出笔数 INTEGER,
+                收入总额 REAL,
+                支出总额 REAL,
+                未编码笔数 INTEGER,
+                已编码笔数 INTEGER,
+                更新时间 TEXT
+            )
+            """
+            self.db.execute_query_safe(create_month_cache_sql)
+
+            # 2) 清空旧缓存
             self.db.execute_query_safe("DELETE FROM town_statistics_cache")
 
             town_refresh_sql = """
@@ -279,21 +317,19 @@ class QueryService:
                 v.所在乡镇街道 as 乡镇名称,
                 COUNT(t.id) as 记账笔数,
                 COUNT(DISTINCT t.hudm) as 户数,
-                COUNT(CASE WHEN t.type = 1 THEN 1 END) as 收入笔数,
-                COUNT(CASE WHEN t.type = 2 THEN 1 END) as 支出笔数,
-                SUM(CASE WHEN t.type = 1 THEN t.money ELSE 0 END) as 收入总额,
-                SUM(CASE WHEN t.type = 2 THEN t.money ELSE 0 END) as 支出总额,
-                COUNT(CASE WHEN t.code IS NULL THEN 1 END) as 未编码笔数,
-                COUNT(CASE WHEN t.code IS NOT NULL THEN 1 END) as 已编码笔数,
+                SUM(CASE WHEN t.id IS NOT NULL AND t.type = 1 THEN 1 ELSE 0 END) as 收入笔数,
+                SUM(CASE WHEN t.id IS NOT NULL AND t.type = 2 THEN 1 ELSE 0 END) as 支出笔数,
+                SUM(CASE WHEN t.id IS NOT NULL AND t.type = 1 THEN t.money ELSE 0 END) as 收入总额,
+                SUM(CASE WHEN t.id IS NOT NULL AND t.type = 2 THEN t.money ELSE 0 END) as 支出总额,
+                SUM(CASE WHEN t.id IS NOT NULL AND t.code IS NULL THEN 1 ELSE 0 END) as 未编码笔数,
+                SUM(CASE WHEN t.id IS NOT NULL AND t.code IS NOT NULL THEN 1 ELSE 0 END) as 已编码笔数,
                 datetime('now') as 更新时间
             FROM v_town_village_list v
             LEFT JOIN 调查点台账合并 t ON SUBSTR(t.hudm, 1, 12) = v.村代码
             GROUP BY v.所在乡镇街道
             """
-
             self.db.execute_query_safe(town_refresh_sql)
 
-            # 刷新月度统计缓存
             self.db.execute_query_safe("DELETE FROM month_statistics_cache")
 
             month_refresh_sql = """
@@ -313,7 +349,6 @@ class QueryService:
             FROM 调查点台账合并 t
             GROUP BY t.year, t.month
             """
-
             self.db.execute_query_safe(month_refresh_sql)
 
             self.logger.info("统计缓存刷新完成")
@@ -322,7 +357,7 @@ class QueryService:
         except Exception as e:
             self.logger.error(f"刷新统计缓存失败: {e}")
             return False
-    
+
     def get_consumption_structure(
         self, 
         where_clause: str = "", 

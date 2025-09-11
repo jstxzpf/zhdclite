@@ -6,6 +6,29 @@
 let currentCharts = {};
 let currentData = {};
 
+// 确保Chart.js已加载（动态加载CDN脚本，避免“Chart is not defined”）
+async function ensureChartJs() {
+    if (typeof Chart !== 'undefined') return true;
+    // 若已有正在加载的脚本，等待其完成
+    if (document.getElementById('chartjs-cdn')) {
+        return new Promise(resolve => {
+            const check = () => {
+                if (typeof Chart !== 'undefined') return resolve(true);
+                setTimeout(check, 100);
+            };
+            check();
+        });
+    }
+    return new Promise(resolve => {
+        const script = document.createElement('script');
+        script.id = 'chartjs-cdn';
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.head.appendChild(script);
+    });
+}
+
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializePage();
@@ -96,10 +119,10 @@ async function loadFilterOptions() {
             fetch('/api/statistics/available_filters'),
             fetch('/api/towns')
         ]);
-        
+
         const filtersData = await filtersResponse.json();
         const townsData = await townsResponse.json();
-        
+
         if (filtersData.success && townsData.success) {
             initializeDateFilters(filtersData.data);
             populateTownsFilter(townsData.data);
@@ -429,9 +452,9 @@ function updateOverviewDisplay(data) {
     document.getElementById('totalMonths').textContent = formatNumber(data.total_months);
     document.getElementById('totalIncome').textContent = formatCurrency(data.total_income);
     document.getElementById('totalExpenditure').textContent = formatCurrency(data.total_expenditure);
-    
+
     // 计算编码完成率
-    const codingRate = data.total_records > 0 ? 
+    const codingRate = data.total_records > 0 ?
         ((data.coded_records / data.total_records) * 100).toFixed(1) + '%' : '0%';
     document.getElementById('codingRate').textContent = codingRate;
 }
@@ -440,11 +463,32 @@ function updateOverviewDisplay(data) {
 async function applyFilters() {
     const activeTab = document.querySelector('.tab-item.active').dataset.tab;
 
+    // 若未选择时间范围，则自动设置默认时间范围，避免后端校验或前端split异常
+    try {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        if (!startDate || !endDate) {
+            setDefaultDateRange();
+            updateFilterDisplay();
+        }
+    } catch (e) {
+        console.warn('设置默认时间范围失败（可忽略）:', e);
+    }
+
     showLoading('正在应用筛选条件...');
 
     try {
         // 首先更新总体概览数据
         await loadOverviewData();
+
+        // 若当前选项卡需要图表，确保Chart.js已就绪
+        const tabsNeedChart = ['household','town','month','consumption','missing'];
+        if (tabsNeedChart.includes(activeTab)) {
+            const ok = await ensureChartJs();
+            if (!ok) {
+                console.warn('Chart.js加载失败，将跳过图表渲染');
+            }
+        }
 
         // 然后更新当前选项卡的数据
         switch (activeTab) {
@@ -473,7 +517,8 @@ async function applyFilters() {
         showMessage('success', '筛选条件应用成功');
     } catch (error) {
         console.error('应用筛选失败:', error);
-        showMessage('error', '应用筛选失败');
+        const msg = (error && error.message) ? error.message : '';
+        showMessage('error', `应用筛选失败${msg ? '：' + msg : ''}`);
     } finally {
         hideLoading();
     }
@@ -503,13 +548,13 @@ function switchTab(tabName) {
         tab.classList.remove('active');
     });
     document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-    
+
     // 更新内容区域
     document.querySelectorAll('.tab-pane').forEach(pane => {
         pane.classList.remove('active');
     });
     document.getElementById(`${tabName}-tab`).classList.add('active');
-    
+
     // 加载对应数据
     loadTabData(tabName);
 }
@@ -530,6 +575,15 @@ async function loadTabData(tabName) {
     showLoading('正在加载数据...');
 
     try {
+        // 若该选项卡需要图表，确保Chart.js已就绪
+        const tabsNeedChart = ['town','month','consumption','missing'];
+        if (tabsNeedChart.includes(tabName)) {
+            const ok = await ensureChartJs();
+            if (!ok) {
+                console.warn('Chart.js加载失败，将跳过图表渲染');
+            }
+        }
+
         switch (tabName) {
             case 'town':
                 await loadTownStatistics();
@@ -546,7 +600,8 @@ async function loadTabData(tabName) {
         }
     } catch (error) {
         console.error('加载选项卡数据失败:', error);
-        showMessage('error', '加载数据失败');
+        const msg = (error && error.message) ? error.message : '';
+        showMessage('error', `加载数据失败${msg ? '：' + msg : ''}`);
     } finally {
         hideLoading();
     }
@@ -558,7 +613,7 @@ async function loadHouseholdStatistics() {
         const params = getFilterParams();
         const response = await fetch(`/api/statistics/by_household?${params}`);
         const data = await response.json();
-        
+
         if (data.success) {
             currentData.household = data.data;
             updateHouseholdTable(data.data);
@@ -578,7 +633,7 @@ async function loadTownStatistics() {
         const params = getFilterParams();
         const response = await fetch(`/api/statistics/by_town?${params}`);
         const data = await response.json();
-        
+
         if (data.success) {
             currentData.town = data.data;
             updateTownTable(data.data);
@@ -598,7 +653,7 @@ async function loadMonthStatistics() {
         const params = getFilterParams();
         const response = await fetch(`/api/statistics/by_month?${params}`);
         const data = await response.json();
-        
+
         if (data.success) {
             currentData.month = data.data;
             updateMonthTable(data.data);
@@ -618,7 +673,7 @@ async function loadConsumptionStatistics() {
         const params = getFilterParams();
         const response = await fetch(`/api/statistics/consumption_structure?${params}`);
         const data = await response.json();
-        
+
         if (data.success) {
             currentData.consumption = data.data;
             updateConsumptionTable(data.data);
@@ -770,7 +825,7 @@ async function onTownChange() {
         // 使用新的API端点获取村庄列表
         const response = await fetch(`/api/villages?town=${encodeURIComponent(selectedTown)}`);
         const data = await response.json();
-        
+
         if (data.success) {
             data.data.forEach(village => {
                 if (village && village.name && village.code) {
@@ -789,12 +844,12 @@ function onVillageChange() {
     const householdSelect = document.getElementById('filterHousehold');
     // 清空户代码选项 - 可以通过现有的available_filters接口获取
     householdSelect.innerHTML = '<option value="">全部户</option>';
-    
+
     const townSelect = document.getElementById('filterTown');
     const villageSelect = document.getElementById('filterVillage');
     const selectedTown = townSelect.value;
     const selectedVillage = villageSelect.value;
-    
+
     // 如果有选择的村庄，通过现有API获取户代码
     if (selectedVillage) {
         loadHouseholdsByVillage(selectedVillage);
@@ -822,7 +877,7 @@ async function loadVillagesAndHouseholds(townName) {
                 });
             }
 
-            // 填充户代码选项
+            // 填充户代码选项（来自统计接口）
             if (data.data.households) {
                 data.data.households.forEach(household => {
                     if (household && household.code && household.name) {
@@ -830,6 +885,24 @@ async function loadVillagesAndHouseholds(townName) {
                         householdSelect.add(new Option(displayText, household.code));
                     }
                 });
+            }
+
+            // 兜底：若统计接口未返回户代码，则直接从“户名单”按乡镇取
+            if (householdSelect.options.length <= 1) {
+                try {
+                    const resp2 = await fetch(`/api/households_by_town?town=${encodeURIComponent(townName)}`);
+                    const data2 = await resp2.json();
+                    if (data2.success && Array.isArray(data2.data)) {
+                        data2.data.forEach(h => {
+                            if (h && h.code && h.name) {
+                                const displayText = `${h.code} - ${h.name}`;
+                                householdSelect.add(new Option(displayText, h.code));
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error('兜底加载户代码(按乡镇)失败:', e);
+                }
             }
         }
     } catch (error) {
@@ -843,15 +916,33 @@ async function loadHouseholdsByVillage(villageCode) {
         const response = await fetch(`/api/statistics/available_filters?village=${villageCode}`);
         const data = await response.json();
 
-        if (data.success && data.data.households) {
-            const householdSelect = document.getElementById('filterHousehold');
+        const householdSelect = document.getElementById('filterHousehold');
 
+        if (data.success && data.data.households) {
             data.data.households.forEach(household => {
                 if (household && household.code && household.name) {
                     const displayText = `${household.code} - ${household.name}`;
                     householdSelect.add(new Option(displayText, household.code));
                 }
             });
+        }
+
+        // 兜底：若统计接口未返回户代码，则直接从“户名单”按村代码取
+        if (householdSelect.options.length <= 1) {
+            try {
+                const resp2 = await fetch(`/api/households_by_village?village=${encodeURIComponent(villageCode)}`);
+                const data2 = await resp2.json();
+                if (data2.success && Array.isArray(data2.data)) {
+                    data2.data.forEach(h => {
+                        if (h && h.code && h.name) {
+                            const displayText = `${h.code} - ${h.name}`;
+                            householdSelect.add(new Option(displayText, h.code));
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('兜底加载户代码(按村)失败:', e);
+            }
         }
     } catch (error) {
         console.error('加载户代码失败:', error);
@@ -974,7 +1065,10 @@ function updateMissingTable(data) {
 
 // 更新分户统计图表
 function updateHouseholdChart(data) {
-    const ctx = document.getElementById('householdChart').getContext('2d');
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('householdChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
 
     // 销毁现有图表
     if (currentCharts.household) {
@@ -1031,7 +1125,10 @@ function updateHouseholdChart(data) {
 
 // 更新分乡镇统计图表
 function updateTownChart(data) {
-    const ctx = document.getElementById('townChart').getContext('2d');
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('townChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
 
     // 销毁现有图表
     if (currentCharts.town) {
@@ -1073,7 +1170,10 @@ function updateTownChart(data) {
 
 // 更新分月统计图表
 function updateMonthChart(data) {
-    const ctx = document.getElementById('monthChart').getContext('2d');
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('monthChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
 
     // 销毁现有图表
     if (currentCharts.month) {
@@ -1129,7 +1229,10 @@ function updateMonthChart(data) {
 
 // 更新消费结构图表
 function updateConsumptionChart(data) {
-    const ctx = document.getElementById('consumptionChart').getContext('2d');
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('consumptionChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
 
     // 销毁现有图表
     if (currentCharts.consumption) {
@@ -1184,7 +1287,10 @@ function updateConsumptionChart(data) {
 
 // 更新漏记账图表
 function updateMissingChart(data) {
-    const ctx = document.getElementById('missingChart').getContext('2d');
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById('missingChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
 
     // 销毁现有图表
     if (currentCharts.missing) {

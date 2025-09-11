@@ -58,17 +58,23 @@ def _is_valid_sqlite(file_path: str) -> bool:
 def clear_household_list():
     @_handle_errors
     def _impl():
-        logger.warning('请求清空: 调查点户名单')
-        affected = 0
+        logger.warning('请求清空: 调查点户名单（将先清空依赖的台账数据以避免外键冲突）')
+        affected_households = 0
+        affected_accounts = 0
         try:
             with _db.pool.get_cursor() as cursor:
+                # 先清空依赖“户代码”的账目数据，避免 FOREIGN KEY 约束失败
+                cursor.execute('DELETE FROM 调查点台账合并')
+                affected_accounts = cursor.rowcount if cursor.rowcount != -1 else 0
+
+                # 再清空户名单
                 cursor.execute('DELETE FROM 调查点户名单')
-                affected = cursor.rowcount if cursor.rowcount != -1 else 0
+                affected_households = cursor.rowcount if cursor.rowcount != -1 else 0
         except Exception as e:
             logger.exception('清空 调查点户名单 失败')
             raise
-        logger.warning(f'清空完成: 调查点户名单, 影响行数={affected}')
-        return jsonify({'success': True, 'message': f'已清空调查点户名单（{affected} 行）。'})
+        logger.warning(f'清空完成: 先清空台账 {affected_accounts} 行，再清空户名单 {affected_households} 行')
+        return jsonify({'success': True, 'message': f'已清空：台账 {affected_accounts} 行；调查点户名单 {affected_households} 行。'})
     return _impl()
 
 

@@ -77,32 +77,33 @@ class Database:
         try:
             with self.pool.get_cursor() as cursor:
                 # 1. 清理旧表
-                cursor.execute(f"IF OBJECT_ID('{table_name}', 'U') IS NOT NULL DROP TABLE {table_name}")
+                # 兼容SQLite：使用 DROP TABLE IF EXISTS
+                cursor.execute(f"DROP TABLE IF EXISTS [{table_name}]")
                 self.logger.info(f"已清理旧表: {table_name}")
 
                 # 2. 根据表名创建新表
                 if table_name == '已经编码完成':
                     create_table_sql = """
                     CREATE TABLE [已经编码完成] (
-                        [户代码] [nvarchar](max) NULL, [户主姓名] [nvarchar](max) NULL, [type_name] [nvarchar](max) NULL,
-                        [数量] [nvarchar](max) NULL, [日期] [nvarchar](max) NULL, [金额] [nvarchar](max) NULL,
-                        [备注] [nvarchar](max) NULL, [收支] [nvarchar](max) NULL, [id] [int] NOT NULL,
-                        [code] [nvarchar](max) NULL, [年度] [nvarchar](max) NULL, [月份] [nvarchar](max) NULL
+                        [户代码] TEXT NULL, [户主姓名] TEXT NULL, [type_name] TEXT NULL,
+                        [数量] TEXT NULL, [日期] TEXT NULL, [金额] TEXT NULL,
+                        [备注] TEXT NULL, [收支] TEXT NULL, [id] INTEGER NOT NULL,
+                        [code] TEXT NULL, [年度] TEXT NULL, [月份] TEXT NULL
                     )"""
                 elif table_name == '国家点待导入':
                     create_table_sql = """
                     CREATE TABLE [国家点待导入] (
-                        [SID] NVARCHAR(MAX) NULL, [县码] NVARCHAR(MAX) NULL, [样本编码] NVARCHAR(MAX) NULL,
-                        [年] NVARCHAR(MAX) NULL, [月] NVARCHAR(MAX) NULL, [页码] NVARCHAR(MAX) NULL,
-                        [行码] NVARCHAR(MAX) NULL, [编码] NVARCHAR(MAX) NULL, [数量] REAL NULL, [金额] REAL NULL,
-                        [数量2] REAL NULL, [人码] NVARCHAR(MAX) NULL, [是否网购] NVARCHAR(MAX) NULL,
-                        [记账方式] NVARCHAR(MAX) NULL, [品名] NVARCHAR(MAX) NULL, [问题类型] NVARCHAR(MAX) NULL,
-                        [记账说明] NVARCHAR(MAX) NULL, [记账审核说明] NVARCHAR(MAX) NULL, [记账日期] NVARCHAR(MAX) NULL,
-                        [创建时间] NVARCHAR(MAX) NULL, [更新时间] NVARCHAR(MAX) NULL, [账页生成设备标识] NVARCHAR(MAX) NULL,
-                        [人代码] NVARCHAR(MAX) NULL
+                        [SID] TEXT NULL, [县码] TEXT NULL, [样本编码] TEXT NULL,
+                        [年] TEXT NULL, [月] TEXT NULL, [页码] TEXT NULL,
+                        [行码] TEXT NULL, [编码] TEXT NULL, [数量] REAL NULL, [金额] REAL NULL,
+                        [数量2] REAL NULL, [人码] TEXT NULL, [是否网购] TEXT NULL,
+                        [记账方式] TEXT NULL, [品名] TEXT NULL, [问题类型] TEXT NULL,
+                        [记账说明] TEXT NULL, [记账审核说明] TEXT NULL, [记账日期] TEXT NULL,
+                        [创建时间] TEXT NULL, [更新时间] TEXT NULL, [账页生成设备标识] TEXT NULL,
+                        [人代码] TEXT NULL
                     )"""
                 else:
-                    columns = ', '.join([f"[{col}] NVARCHAR(MAX)" for col in df.columns])
+                    columns = ', '.join([f"[{col}] TEXT" for col in df.columns])
                     create_table_sql = f"CREATE TABLE [{table_name}] ({columns})"
                 
                 cursor.execute(create_table_sql)
@@ -119,7 +120,11 @@ class Database:
                 placeholders = ', '.join(['?'] * len(df.columns))
                 insert_sql = f"INSERT INTO [{table_name}] ({', '.join(f'[{col}]' for col in df.columns)}) VALUES ({placeholders})"
                 
-                cursor.fast_executemany = True
+                # 兼容不同驱动：pyodbc/sqlserver 有 fast_executemany，sqlite3 无此属性
+                try:
+                    cursor.fast_executemany = True
+                except Exception:
+                    pass
                 cursor.executemany(insert_sql, batch_data)
                 
                 successful_rows = cursor.rowcount if cursor.rowcount != -1 else len(batch_data)
@@ -138,36 +143,38 @@ class Database:
 
     def ensure_performance_indexes(self):
         """确保关键表有必要的性能索引"""
-        self.logger.info("开始检查和创建性能索引")
-        indexes_to_create = [
-            ("调查点台账合并", "id", "IX_main_table_id"),
-            ("调查点台账合并", "code", "IX_main_table_code"),
-            ("调查点台账合并", "hudm", "IX_main_table_hudm"),
-            ("调查点台账合并", "year, month", "IX_main_table_year_month"),
-            ("调查品种编码", "帐目编码", "IX_coding_table_code")
+        self.logger.info("开始检查和创建性能索引（SQLite 兼容）")
+        # 在 SQLite 中使用 CREATE INDEX IF NOT EXISTS 简化处理
+        sqlite_index_sqls = [
+            "CREATE INDEX IF NOT EXISTS IX_main_table_id ON 调查点台账合并(id)",
+            "CREATE INDEX IF NOT EXISTS IX_main_table_code ON 调查点台账合并(code)",
+            "CREATE INDEX IF NOT EXISTS IX_main_table_hudm ON 调查点台账合并(hudm)",
+            "CREATE INDEX IF NOT EXISTS IX_main_table_year_month ON 调查点台账合并(year, month)",
+            "CREATE INDEX IF NOT EXISTS IX_coding_table_code ON 调查品种编码(帐目编码)"
         ]
-
-        for table, columns, index_name in indexes_to_create:
+        for sql in sqlite_index_sqls:
             try:
                 with self.pool.get_cursor() as cursor:
-                    check_sql = "SELECT COUNT(*) FROM sys.indexes WHERE object_id = OBJECT_ID(?) AND name = ?"
-                    cursor.execute(check_sql, (table, index_name))
-                    if cursor.fetchone()[0] == 0:
-                        create_sql = f"CREATE NONCLUSTERED INDEX {index_name} ON {table} ({columns})"
-                        cursor.execute(create_sql)
-                        self.logger.info(f"成功创建索引: {index_name} on {table}")
+                    cursor.execute(sql)
             except Exception as e:
-                self.logger.warning(f"创建索引 {index_name} 失败 (可能已存在或表不存在): {e}")
+                self.logger.warning(f"创建索引失败（可能已存在或表不存在）: {sql} - {e}")
 
     def optimize_table_statistics(self, table_name):
-        """更新表的统计信息以优化查询性能"""
-        self.logger.info(f"开始更新表统计信息: {table_name}")
+        """优化SQLite统计信息（替代 SQL Server 的 UPDATE STATISTICS）"""
+        self.logger.info(f"开始优化统计信息: {table_name}")
         try:
             with self.pool.get_cursor() as cursor:
-                cursor.execute(f"UPDATE STATISTICS {table_name}")
-            self.logger.info(f"表统计信息更新完成: {table_name}")
+                try:
+                    cursor.execute(f"ANALYZE {table_name}")
+                except Exception as e:
+                    self.logger.warning(f"ANALYZE {table_name} 失败: {e}")
+                try:
+                    cursor.execute("PRAGMA optimize")
+                except Exception as e:
+                    self.logger.warning(f"PRAGMA optimize 失败: {e}")
+            self.logger.info(f"统计信息优化完成: {table_name}")
         except Exception as e:
-            self.logger.warning(f"更新表统计信息失败 {table_name}: {e}")
+            self.logger.warning(f"优化统计信息时出现问题 {table_name}: {e}")
 
 
     def check_table_has_identity_column(self, table_name: str) -> bool:
