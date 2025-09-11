@@ -338,6 +338,34 @@ def import_national_data():
                     df_temp['wton'] = '1'
                     df_temp['ntow'] = '0'
 
+                    # 外键预检查与修正：
+                    #  - 若 hudm 不在 调查点户名单，则跳过该记录，避免违反外键(hudm -> 户代码)
+                    #  - 若 code 不在 调查品种编码，则将 code 置为 NULL（允许为空，不违反外键）
+                    try:
+                        rows_h = db.execute_query_safe("SELECT 户代码 FROM 调查点户名单")
+                        allowed_hudm = {str(r[0]).strip() for r in rows_h if r and r[0] is not None}
+                    except Exception as e:
+                        logger.warning(f"加载户名单失败，将视为无可用户代码集合: {e}")
+                        allowed_hudm = set()
+                    try:
+                        rows_c = db.execute_query_safe("SELECT 帐目编码 FROM 调查品种编码")
+                        allowed_codes = {str(r[0]).strip() for r in rows_c if r and r[0] is not None}
+                    except Exception as e:
+                        logger.warning(f"加载品种编码失败，将视为无可用编码集合: {e}")
+                        allowed_codes = set()
+
+                    pre_cnt = len(df_temp)
+                    # 置空不在编码表的 code（保留原记录用于金额统计等）
+                    df_temp['code_fixed'] = df_temp['编码'].apply(lambda x: x if x in allowed_codes else None)
+                    # 过滤掉 hudm 未在户名单中的记录
+                    df_temp = df_temp[df_temp['hudm'].isin(allowed_hudm)].copy()
+                    skipped_fk_households = pre_cnt - len(df_temp)
+                    # 统计编码被置空的记录数（原编码非空但不在编码表）
+                    try:
+                        code_relaxed_count = int(((df_temp['编码'].astype(str).str.len() > 0) & (df_temp['code_fixed'].isna())).sum())
+                    except Exception:
+                        code_relaxed_count = 0
+
                     # 构建插入所需列顺序
                     insert_columns = [
                         'hudm','编码','数量','金额','记账说明','person','year','month','z_guid','创建时间',
@@ -355,7 +383,7 @@ def import_national_data():
 
                     values = [
                         (
-                            r['hudm'], r['编码'], r['数量'], r['金额'], r['记账说明'], r['person'], r['year'], r['month'],
+                            r['hudm'], r.get('code_fixed'), r['数量'], r['金额'], r['记账说明'], r['person'], r['year'], r['month'],
                             r['z_guid'], r['创建时间'], r['type'], r['id'], r['type_name'], r['unit_name'], r['ybm'], r['ybz'], r['wton'], r['ntow']
                         )
                         for _, r in df_temp.iterrows()
@@ -366,32 +394,32 @@ def import_national_data():
                         inserted_count = len(values)
                         logger.info(f"国家点数据成功合并到主表，共插入 {inserted_count} 条记录")
 
-                    # 更新编码匹配信息
-                    if inserted_count > 0:
-                        update_sql = f'''UPDATE 调查点台账合并
-                            SET type_name = (
-                                SELECT c.帐目指标名称 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
-                            ),
-                                unit_name = (
-                                SELECT c.单位名称 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
-                            )
-                            WHERE code IS NOT NULL AND ybz='1' AND id >= {national_id_start}
-                        '''
-                        cursor.execute(update_sql)
-                        updated_count = cursor.rowcount
-                        logger.info(f"国家点数据编码匹配完成，共更新 {updated_count} 条记录")
+                        # 更新编码匹配信息
+                        if inserted_count > 0:
+                            update_sql = f'''UPDATE 调查点台账合并
+                                SET type_name = (
+                                    SELECT c.帐目指标名称 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
+                                ),
+                                    unit_name = (
+                                    SELECT c.单位名称 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
+                                )
+                                WHERE code IS NOT NULL AND ybz='1' AND id >= {national_id_start}
+                            '''
+                            cursor.execute(update_sql)
+                            updated_count = cursor.rowcount
+                            logger.info(f"国家点数据编码匹配完成，共更新 {updated_count} 条记录")
 
-                        # 更新收支类别
-                        type_update_sql = f'''UPDATE 调查点台账合并
-                            SET type = (
-                                SELECT CAST(c.收支类别 AS INTEGER) FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
-                            )
-                            WHERE id >= {national_id_start} AND code IS NOT NULL AND (
-                                SELECT c.收支类别 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
-                            ) IS NOT NULL'''
-                        cursor.execute(type_update_sql)
-                        type_updated_count = cursor.rowcount
-                        logger.info(f"收支类别自动填充完成，共更新 {type_updated_count} 条记录的type字段")
+                            # 更新收支类别
+                            type_update_sql = f'''UPDATE 调查点台账合并
+                                SET type = (
+                                    SELECT CAST(c.收支类别 AS INTEGER) FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
+                                )
+                                WHERE id >= {national_id_start} AND code IS NOT NULL AND (
+                                    SELECT c.收支类别 FROM 调查品种编码 c WHERE c.帐目编码 = 调查点台账合并.code
+                                ) IS NOT NULL'''
+                            cursor.execute(type_update_sql)
+                            type_updated_count = cursor.rowcount
+                            logger.info(f"收支类别自动填充完成，共更新 {type_updated_count} 条记录的type字段")
 
             # 构建返回消息
             summary_message = f"国家点数据导入完成！\n"
@@ -399,6 +427,10 @@ def import_national_data():
             summary_message += f"• 插入到主表：{inserted_count} 条\n"
             summary_message += f"• 编码匹配更新：{updated_count} 条\n"
             summary_message += f"• 收支类别填充：{type_updated_count} 条\n"
+            if 'skipped_fk_households' in locals() and skipped_fk_households > 0:
+                summary_message += f"• 跳过（户代码不存在于户名单）：{skipped_fk_households} 条\n"
+            if 'code_relaxed_count' in locals() and code_relaxed_count > 0:
+                summary_message += f"• 编码未匹配字典表，已置空：{code_relaxed_count} 条\n"
 
             invalid_count = temp_count - valid_record_count
             if invalid_count > 0:
@@ -471,25 +503,15 @@ def export_household_list():
         logger.info("开始导出调查点户名单")
 
         try:
-            # 使用已验证的SQL查询，确保正确回填所在乡镇街道和村居名称
-            sql = """
+            # 重构导出流程：分别查询基础数据与映射视图，用Pandas在内存中稳健合并并回填
+            # 1) 基础户数据（不做SQL回填，避免数据库差异）
+            base_sql = """
             SELECT
                 h.户代码,
                 h.户主姓名,
                 h.人数,
-                CASE
-                    WHEN h.所在乡镇街道 IS NOT NULL AND TRIM(h.所在乡镇街道) != '' THEN h.所在乡镇街道
-                    WHEN v.所在乡镇街道 IS NOT NULL AND TRIM(v.所在乡镇街道) != '' THEN v.所在乡镇街道
-                    WHEN m.所在乡镇街道 IS NOT NULL AND TRIM(m.所在乡镇街道) != '' THEN m.所在乡镇街道
-                    ELSE ''
-                END AS 所在乡镇街道,
-                CASE
-                    WHEN h.村居名称 IS NOT NULL AND TRIM(h.村居名称) != '' THEN h.村居名称
-                    WHEN v.村居名称 IS NOT NULL AND TRIM(v.村居名称) != '' THEN v.村居名称
-                    WHEN m.村居名称 IS NOT NULL AND TRIM(m.村居名称) != '' THEN m.村居名称
-                    WHEN h.调查小区名称 IS NOT NULL AND TRIM(h.调查小区名称) != '' THEN h.调查小区名称
-                    ELSE ''
-                END AS 村居名称,
+                h.所在乡镇街道 AS 原所在乡镇街道,
+                h.村居名称   AS 原村居名称,
                 h.创建时间,
                 h.更新时间,
                 h.密码,
@@ -499,66 +521,108 @@ def export_household_list():
                 h.家庭人口,
                 h.是否退出
             FROM 调查点户名单 h
-            LEFT JOIN v_town_village_list v ON SUBSTR(h.户代码, 1, 12) = v.村代码
-            LEFT JOIN 调查点村名单 m ON SUBSTR(h.户代码, 1, 12) = m.户代码前12位
             ORDER BY h.户代码
             """
+            base_rows = db.execute_query_safe(base_sql)
+            if not base_rows:
+                return jsonify({'success': False, 'message': '没有找到调查点户名单数据'}), 404
 
-            result = db.execute_query_safe(sql)
+            base_cols = ['户代码','户主姓名','人数','原所在乡镇街道','原村居名称','创建时间','更新时间','密码','调查小区名称','城乡属性','住宅地址','家庭人口','是否退出']
+            df = pd.DataFrame(base_rows, columns=base_cols)
 
-            if not result:
-                return jsonify({
-                    'success': False,
-                    'message': '没有找到调查点户名单数据'
-                }), 404
+            # 2) 视图映射：v_town_village_list（按村代码 = 户代码前12位）
+            v_sql = """
+            SELECT 村代码, 所在乡镇街道, 村居名称 FROM v_town_village_list
+            """
+            v_rows = db.execute_query_safe(v_sql)
+            df_v = pd.DataFrame(v_rows, columns=['村代码','所在乡镇街道_v','村居名称_v']) if v_rows else pd.DataFrame(columns=['村代码','所在乡镇街道_v','村居名称_v'])
 
-            # 定义列名（与SQL SELECT顺序一致）
-            columns = ['户代码', '户主姓名', '人数', '所在乡镇街道', '村居名称', '创建时间', '更新时间',
-                      '密码', '调查小区名称', '城乡属性', '住宅地址', '家庭人口', '是否退出']
+            # 3) 调查点村名单（应急兜底）
+            m_sql = """
+            SELECT 户代码前12位, 所在乡镇街道, 村居名称 FROM 调查点村名单
+            """
+            m_rows = db.execute_query_safe(m_sql)
+            df_m = pd.DataFrame(m_rows, columns=['户代码前12位','所在乡镇街道_m','村居名称_m']) if m_rows else pd.DataFrame(columns=['户代码前12位','所在乡镇街道_m','村居名称_m'])
 
-            df = pd.DataFrame(result, columns=columns)
+            # 4) 生成村代码并合并
+            df['村代码'] = df['户代码'].astype(str).str.slice(0, 12)
+            if not df_v.empty:
+                df = df.merge(df_v, how='left', on='村代码')
+            else:
+                df['所在乡镇街道_v'] = ''
+                df['村居名称_v'] = ''
 
-            # 3.1) 额外回填兜底：
-            # - 若“村居名称”仍为空，优先用“调查小区名称”补上
-            # - 若“所在乡镇街道”仍为空，尝试从“住宅地址”提取（如：xxx街道办事处 / xxx镇 / xxx乡）
-            def _is_empty(x):
-                return x is None or (isinstance(x, str) and x.strip() == '')
+            if not df_m.empty:
+                df = df.merge(df_m, how='left', left_on='村代码', right_on='户代码前12位')
+            else:
+                df['户代码前12位'] = df['村代码']
+                df['所在乡镇街道_m'] = ''
+                df['村居名称_m'] = ''
 
+            # 5) 统一回填逻辑（空串/None/"None" 视为缺失）
+            def _empty(x):
+                if x is None:
+                    return True
+                if isinstance(x, float) and pd.isna(x):
+                    return True
+                if isinstance(x, str):
+                    return x.strip() == '' or x.strip().lower() == 'none'
+                return False
+
+            def _first(*vals):
+                for v in vals:
+                    if not _empty(v):
+                        return str(v).strip()
+                return ''
+
+            # 6) 从地址尝试提取乡镇名
             def _extract_town(addr: str) -> str:
                 if not isinstance(addr, str):
                     return ''
-                addr = addr.strip()
-                for kw in ['街道办事处', '街道', '镇', '乡']:
-                    i = addr.find(kw)
+                s = addr.strip()
+                for kw in ['街道办事处','街道','镇','乡']:
+                    i = s.find(kw)
                     if i != -1:
-                        return addr[:i + len(kw)]
+                        return s[:i+len(kw)]
                 return ''
 
-            # 额外回填已经在SQL中处理，这里不再需要
-            # if '村居名称' in df.columns and '调查小区名称' in df.columns:
-            #     df['村居名称'] = df['村居名称'].where(~df['村居名称'].apply(_is_empty), df['调查小区名称'])
+            df['所在乡镇街道'] = df.apply(
+                lambda r: _first(
+                    r.get('原所在乡镇街道'),
+                    r.get('所在乡镇街道_v'),
+                    r.get('所在乡镇街道_m'),
+                    _extract_town(r.get('住宅地址'))
+                ), axis=1
+            )
+            df['村居名称'] = df.apply(
+                lambda r: _first(
+                    r.get('原村居名称'),
+                    r.get('村居名称_v'),
+                    r.get('村居名称_m'),
+                    r.get('调查小区名称')
+                ), axis=1
+            )
 
-            # if '所在乡镇街道' in df.columns and '住宅地址' in df.columns:
-            #     df['所在乡镇街道'] = df.apply(
-            #         lambda r: r['所在乡镇街道'] if not _is_empty(r.get('所在乡镇街道')) else _extract_town(r.get('住宅地址')), axis=1
-            #     )
+            # 7) 组装导出列并排序
+            export_cols = ['户代码','户主姓名','人数','所在乡镇街道','村居名称','创建时间','更新时间','密码','调查小区名称','城乡属性','住宅地址','家庭人口','是否退出']
+            df = df[export_cols].copy()
+            df.sort_values(by='户代码', inplace=True)
 
-            # 4) 生成文件
+            # 8) 调试日志（采样几条）
+            sample = df[df['户代码'].isin(['321283001002012','321283001002016','321283001002020','321283001002031','321283001002032'])][['户代码','所在乡镇街道','村居名称']]
+            logger.info(f"导出采样行: {sample.to_dict(orient='records')}")
+
+            # 9) 生成文件
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"调查点户名单_{timestamp}.xlsx"
-
             upload_dir = os.path.abspath(app_config['UPLOAD_FOLDER'])
             if not os.path.exists(upload_dir):
                 os.makedirs(upload_dir, exist_ok=True)
-
             file_path = os.path.join(upload_dir, filename)
 
-            # 使用excel_ops保存Excel文件
             excel_ops._save_df_to_excel(df, file_path, '调查点户名单')
-
             logger.info(f"调查点户名单导出成功: {file_path}")
 
-            # 返回文件供下载
             return send_file(
                 file_path,
                 as_attachment=True,
@@ -568,10 +632,7 @@ def export_household_list():
 
         except Exception as e:
             logger.error(f"导出调查点户名单失败: {str(e)}")
-            return jsonify({
-                'success': False,
-                'message': f'导出失败: {str(e)}'
-            }), 500
+            return jsonify({'success': False,'message': f'导出失败: {str(e)}'}), 500
 
     return _export_household_list()
 
@@ -604,8 +665,17 @@ def import_household_list():
             updated_count = 0
             error_count = 0
             error_details = []
+            skipped_count = 0  # 因“户代码前12位不在调查点村名单”而跳过的条数
 
-            logger.info(f"开始处理 {total_rows} 条调查点户名单记录")
+            # 预加载允许的“户代码前12位”集合（来自 调查点村名单）
+            try:
+                mapping_rows = db.execute_query_safe("SELECT DISTINCT 户代码前12位 FROM 调查点村名单")
+                allowed_prefixes = {str(r[0]).strip() for r in mapping_rows if r and str(r[0]).strip()}
+            except Exception as e:
+                logger.warning(f"加载调查点村名单前12位集合失败，将视为空集合: {e}")
+                allowed_prefixes = set()
+
+            logger.info(f"开始处理 {total_rows} 条调查点户名单记录（有效前12位集合大小: {len(allowed_prefixes)}）")
 
             # 逐行处理数据，使用UPSERT操作
             with db.pool.get_cursor() as cursor:
@@ -621,6 +691,15 @@ def import_household_list():
                         if not 户代码 or not 户主姓名:
                             error_count += 1
                             error_details.append(f"第{index+2}行: 户代码或户主姓名为空")
+                            continue
+
+                        # 过滤：户代码前12位必须存在于“调查点村名单”
+                        前12位 = 户代码[:12]
+                        if (len(前12位) < 12) or (前12位 not in allowed_prefixes):
+                            skipped_count += 1
+                            # 可选：记录少量样本便于排查
+                            if skipped_count <= 5:
+                                error_details.append(f"第{index+2}行已跳过：户代码前12位 {前12位} 不在调查点村名单中")
                             continue
 
                         # 检查记录是否已存在
@@ -666,18 +745,16 @@ def import_household_list():
             summary_message += f"• 总处理记录数：{total_rows} 条\n"
             summary_message += f"• 新增记录：{new_count} 条\n"
             summary_message += f"• 更新记录：{updated_count} 条\n"
+            summary_message += f"• 过滤未在“调查点村名单”的记录：{skipped_count} 条\n"
 
-            if error_count > 0:
-                summary_message += f"• 错误记录：{error_count} 条\n"
-                if error_details:
-                    summary_message += f"• 错误详情：\n"
-                    # 只显示前5个错误详情，避免消息过长
-                    for detail in error_details[:5]:
-                        summary_message += f"  - {detail}\n"
-                    if len(error_details) > 5:
-                        summary_message += f"  - 还有 {len(error_details) - 5} 个错误未显示\n"
+            if error_count > 0 or skipped_count > 0:
+                summary_message += f"• 备注：以下为部分跳过/错误详情（最多5条）：\n"
+                for detail in error_details[:5]:
+                    summary_message += f"  - {detail}\n"
+                if len(error_details) > 5:
+                    summary_message += f"  - 还有 {len(error_details) - 5} 条未显示\n"
 
-            logger.info(f"调查点户名单导入完成 - 新增: {new_count}, 更新: {updated_count}, 错误: {error_count}")
+            logger.info(f"调查点户名单导入完成 - 新增: {new_count}, 更新: {updated_count}, 跳过: {skipped_count}, 错误: {error_count}")
             return summary_message
 
         except Exception as e:
