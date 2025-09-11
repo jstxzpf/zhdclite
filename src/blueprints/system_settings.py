@@ -12,6 +12,8 @@ import shutil
 import logging
 from datetime import datetime
 
+import sqlite3
+
 from ..database_pool import get_connection_pool, close_connection_pool
 
 system_settings_bp = Blueprint('system_settings', __name__)
@@ -219,4 +221,92 @@ def restore_database():
         logger.info('数据库恢复完成')
         return jsonify({'success': True, 'message': '数据库已恢复成功。'})
     return _impl()
+
+
+@system_settings_bp.route('/api/system/compact-database', methods=['POST'])
+def compact_database():
+    @_handle_errors
+    def _impl():
+        db_file = _db_path()
+        if not os.path.exists(db_file):
+            return jsonify({'success': False, 'message': '未找到数据库文件'}), 404
+
+        # 统计压缩前大小（含 -wal / -shm，如存在）
+        wal_file = f"{db_file}-wal"
+        shm_file = f"{db_file}-shm"
+
+        def fsize(p: str) -> int:
+            try:
+                return os.path.getsize(p) if os.path.exists(p) else 0
+            except Exception:
+                return 0
+
+        size_before = fsize(db_file) + fsize(wal_file) + fsize(shm_file)
+
+        # 关闭连接池，释放数据库文件句柄
+        try:
+            close_connection_pool()
+        except Exception:
+            logger.warning('关闭连接池时出现警告，将继续压缩流程', exc_info=True)
+
+        # 执行 WAL checkpoint + VACUUM + optimize
+        conn = None
+        try:
+            conn = sqlite3.connect(db_file, timeout=120, check_same_thread=False)
+            # 将 WAL 中未合并的数据写回主库并尽量截断 WAL 文件
+            try:
+                conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            except Exception:
+                logger.warning('执行 wal_checkpoint(TRUNCATE) 失败，继续尝试 VACUUM', exc_info=True)
+
+            # VACUUM 收缩数据库文件
+            conn.execute('VACUUM')
+
+            # 可选优化（不会影响功能）
+            try:
+                conn.execute('PRAGMA optimize')
+            except Exception:
+                pass
+
+            conn.commit()
+        except Exception:
+            logger.exception('数据库压缩（VACUUM）失败')
+            raise
+        finally:
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+
+        # 重新初始化连接池并做连通性检查
+        try:
+            _db.pool = get_connection_pool()
+            with _db.pool.get_cursor() as cursor:
+                cursor.execute('SELECT 1')
+                _ = cursor.fetchone()
+        except Exception:
+            logger.exception('压缩后数据库连通性检查失败')
+            raise
+
+        size_after = fsize(db_file) + fsize(wal_file) + fsize(shm_file)
+        saved = max(0, size_before - size_after)
+
+        def to_mb(n):
+            return round(n / (1024 * 1024), 3)
+
+        msg = (
+            f"压缩完成：总大小 {to_mb(size_before)} MB -> {to_mb(size_after)} MB，"
+            f"节省 {to_mb(saved)} MB。"
+        )
+        logger.info(msg)
+        return jsonify({
+            'success': True,
+            'message': msg,
+            'size_before_bytes': size_before,
+            'size_after_bytes': size_after,
+            'saved_bytes': saved
+        })
+    return _impl()
+
 
