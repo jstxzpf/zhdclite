@@ -71,3 +71,20 @@ python app.py
 
 ## 许可证
 参见 LICENSE。
+
+
+## 本次代码清理与优化（2025-09-11）
+- 删除不再使用的测试/调试脚本与临时文件：
+  - test_export_fix.py、debug_household_export.py、add_test_data.py
+  - test_household_export_20250910_083643.xlsx（测试导出样例）
+  - 旧备份与占位文件：backups/database_backup_.db、database_backup_20250909_032816.db
+  - 历史日志：migration.log、migration_failed.log、app_stdout.log
+- 日志处理：保留 app.log 文件句柄，已将其内容清空（截断）。
+- 保留与保护：
+  - 未清理 uploads/ 目录中的业务数据与备份（含 database_backup_*.db），以保障数据可追溯。
+  - 未改动 database.db 及其 WAL/SHM 文件，保障运行时数据库完整性。
+- 验证：
+  - 应用已保持运行，/health 健康检查通过。
+  - 核心功能（数据导入、统计分析、户名单管理等）不受影响。
+
+说明：后续如需进一步进行“未使用导入语句/依赖”的自动化清理，建议在允许的前提下引入静态检查工具（如 ruff/flake8）并在 CI 中执行，以更全面地移除冗余导入与死代码。当前变更优先进行安全、无副作用的外部文件与脚本清理。
