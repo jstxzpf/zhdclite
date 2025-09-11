@@ -300,12 +300,15 @@
                             </button>
                         </div>
                         <div class="button-group" style="margin-top:12px;">
-                            <!-- 备份与恢复 -->
+                            <!-- 备份 / 恢复 / 压缩数据库 -->
                             <button type="button" class="btn btn-primary" onclick="backupDatabase()">
                                 <i class="fas fa-download"></i> 备份数据库
                             </button>
                             <button type="button" class="btn btn-primary" onclick="openRestoreDialog()">
                                 <i class="fas fa-upload"></i> 恢复数据库
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="compactDatabase()">
+                                <i class="fas fa-compress"></i> 压缩数据库
                             </button>
                             <input type="file" id="restore_db_file" accept=".db" style="display:none" onchange="handleRestoreFileChange()" />
                         </div>
@@ -1381,6 +1384,35 @@
                     })
                     .finally(() => hideLoading());
             }
+
+            // 压缩数据库（VACUUM）
+            function compactDatabase() {
+                const confirmText = '压缩数据库将执行 WAL checkpoint + VACUUM 操作，期间会短暂占用数据库资源。确定要继续吗？';
+                showConfirmDialog(confirmText, () => {
+                    showLoadingWithProgress('正在压缩数据库...');
+                    const steps = ['正在执行 WAL checkpoint...', '正在执行 VACUUM 收缩...', '正在优化数据库...'];
+                    let idx = 0;
+                    const timer = setInterval(() => {
+                        idx = (idx + 1) % steps.length;
+                        updateLoadingText(steps[idx]);
+                    }, 3000);
+
+                    fetch('/api/system/compact-database', { method: 'POST' })
+                        .then(res => res.json())
+                        .then(data => {
+                            showMessage(data.message || '压缩完成', data.success ? 'success' : 'error');
+                        })
+                        .catch(err => {
+                            showMessage('压缩失败：' + err.message, 'error');
+                        })
+                        .finally(() => {
+                            clearInterval(timer);
+                            hideLoading();
+                            updateSystemStatus();
+                        });
+                });
+            }
+
 
 
         // 调查点户名单导入功能
