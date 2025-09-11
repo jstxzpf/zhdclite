@@ -5,7 +5,7 @@
 
 from functools import wraps
 from flask import request
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)

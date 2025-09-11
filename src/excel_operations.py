@@ -36,7 +36,7 @@ class ExcelOperations:
             workbook.save(filename)
             workbook.close()
 
-        except Exception as e:
+        except Exception:
             # 如果出错，回退到简单方法
             with pd.ExcelWriter(filename, mode='a', engine='openpyxl', if_sheet_exists='replace') as writer:
                 df.to_excel(writer, sheet_name=sheet_name, index=False)

@@ -6,7 +6,7 @@
 
 import logging
 import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, List
 from datetime import datetime
 from src.household_analysis_dal import HouseholdAnalysisDAL
 from src.consumption_profile_engine import ConsumptionProfileEngine

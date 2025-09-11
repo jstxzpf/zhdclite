@@ -5,10 +5,9 @@
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 import numpy as np
-from datetime import datetime, timedelta
-import calendar
+from datetime import datetime
 
 
 class RecordingQualityEngine:

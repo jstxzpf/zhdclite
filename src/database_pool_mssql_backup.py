@@ -5,7 +5,6 @@ import pyodbc
 import json
 import os
 import logging
-import time
 from queue import Queue, Empty, Full
 from contextlib import contextmanager
 import threading

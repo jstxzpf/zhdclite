@@ -63,15 +63,6 @@ def allowed_file(filename):
     """检查文件扩展名是否允许"""
     return validate_file_extension(filename)
 
-def allowed_excel_file(filename):
-    """检查Excel文件扩展名是否允许"""
-    excel_extensions = {'xlsx', 'xls'}
-    return validate_file_extension(filename, excel_extensions)
-
-def allowed_csv_file(filename):
-    """检查CSV文件扩展名是否允许"""
-    csv_extensions = {'csv'}
-    return validate_file_extension(filename, csv_extensions)
 
 def validate_file_size(file):
     """验证文件大小"""

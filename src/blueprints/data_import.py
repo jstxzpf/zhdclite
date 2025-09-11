@@ -366,11 +366,6 @@ def import_national_data():
                     except Exception:
                         code_relaxed_count = 0
 
-                    # 构建插入所需列顺序
-                    insert_columns = [
-                        'hudm','编码','数量','金额','记账说明','person','year','month','z_guid','创建时间',
-                        'type','id','type_name','unit_name','ybm','ybz','wton','ntow'
-                    ]
                     # 将金额/数量保持原值（如需数值化可在此转换）
 
                     # 3) executemany 插入

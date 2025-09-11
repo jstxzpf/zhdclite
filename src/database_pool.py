@@ -4,7 +4,6 @@ SQLite数据库连接池模块
 import sqlite3
 import os
 import logging
-import time
 from queue import Queue, Empty, Full
 from contextlib import contextmanager
 import threading

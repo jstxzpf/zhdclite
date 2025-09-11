@@ -6,9 +6,8 @@
 - 备份/恢复 SQLite 数据库
 """
 
-from flask import Blueprint, request, jsonify, send_file, current_app
+from flask import Blueprint, request, jsonify, send_file
 import os
-import io
 import shutil
 import logging
 from datetime import datetime
@@ -70,7 +69,7 @@ def clear_household_list():
                 # 再清空户名单
                 cursor.execute('DELETE FROM 调查点户名单')
                 affected_households = cursor.rowcount if cursor.rowcount != -1 else 0
-        except Exception as e:
+        except Exception:
             logger.exception('清空 调查点户名单 失败')
             raise
         logger.warning(f'清空完成: 先清空台账 {affected_accounts} 行，再清空户名单 {affected_households} 行')

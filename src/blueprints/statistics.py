@@ -5,15 +5,12 @@
 
 from flask import Blueprint, request, jsonify, render_template
 import logging
-import pandas as pd
-from datetime import datetime, timedelta
-import calendar
 import threading
 
 # 导入新的工具类
 from src.query_service import QueryService
 from src.response_helper import ResponseHelper, handle_api_exception
-from src.param_validator import validate_year_month_params, validate_required_params, FilterBuilder
+from src.param_validator import validate_year_month_params, FilterBuilder
 
 # 创建蓝图
 statistics_bp = Blueprint('statistics', __name__)

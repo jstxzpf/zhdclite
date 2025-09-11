@@ -6,7 +6,6 @@
 
 import pandas as pd
 import logging
-from datetime import datetime
 
 
 class ElectronicLedgerGenerator:
@@ -67,7 +66,6 @@ class ElectronicLedgerGenerator:
             area_code = self._get_village_code(village)
             if not area_code:
                 raise ValueError(f"未找到村庄 '{village}' 对应的代码")
-            area_name = f"{town}-{village}"
             is_village_level = True
             self.logger.info(f"开始生成电子台账 - 村庄: {village} (代码: {area_code}), 年度: {year}, 月份: {month}")
         else:
@@ -76,7 +74,6 @@ class ElectronicLedgerGenerator:
             if not village_codes:
                 raise ValueError(f"未找到乡镇 '{town}' 对应的村代码")
             area_code = village_codes  # 乡镇级别使用村代码列表
-            area_name = town
             is_village_level = False
             self.logger.info(f"开始生成电子台账 - 乡镇: {town} (包含{len(village_codes)}个村), 年度: {year}, 月份: {month}")
 

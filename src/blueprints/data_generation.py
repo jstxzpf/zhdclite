@@ -3,17 +3,15 @@
 包含生成电子台账和汇总表的功能
 """
 
-from flask import Blueprint, request, send_file, current_app, make_response, Response, jsonify
+from flask import Blueprint, request, send_file, make_response, jsonify
 import logging
 import os
 import pandas as pd
 import zipfile
 import tempfile
 import shutil
-import json
 import time
 import threading
-from queue import Queue
 # from src.error_handler import with_error_handling  # 已删除
 
 # 创建蓝图

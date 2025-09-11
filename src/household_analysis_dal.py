@@ -5,9 +5,7 @@
 """
 
 import logging
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime, timedelta
-import pandas as pd
+from typing import List, Dict, Optional
 
 
 class HouseholdAnalysisDAL:

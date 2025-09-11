@@ -5,10 +5,7 @@
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
-import numpy as np
-from datetime import datetime, timedelta
-import statistics
+from typing import Dict, List
 
 
 class AnomalyDetectionEngine:
